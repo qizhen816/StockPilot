@@ -1,0 +1,26 @@
+[project]
+name = "stock-pilot"
+version = "0.1.0"
+description = "Explainable AI-powered trading assistant for the Chinese A-share market."
+requires-python = ">=3.12"
+dependencies = [
+  "akshare>=1.17",
+  "pandas>=2.2",
+  "numpy>=2.0",
+  "PyYAML>=6.0",
+  "rich>=14.0",
+  "matplotlib>=3.10",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+select = ["E", "F", "B", "I", "UP", "PL"]
+ignore = ["PLR2004"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

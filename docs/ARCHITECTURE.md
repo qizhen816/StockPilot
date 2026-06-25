@@ -1,0 +1,636 @@
+ARCHITECTURE.md
+
+StockPilot Architecture
+
+Purpose
+
+This document defines the software architecture of StockPilot.
+
+Unlike README.md, this file is intended for developers and AI coding assistants (Codex, Cursor, Claude Code).
+
+Every module must follow the architecture described here.
+
+⸻
+
+Philosophy
+
+StockPilot is NOT a quantitative trading engine.
+
+It is a decision support system.
+
+Its purpose is
+
+Market Data
+      │
+      ▼
+Indicators
+      │
+      ▼
+Analysis
+      │
+      ▼
+Score
+      │
+      ▼
+Suggestion
+      │
+      ▼
+Human Decision
+
+The system never performs automatic trading.
+
+All conclusions must be explainable.
+
+⸻
+
+Design Principles
+
+1. Single Responsibility
+
+Every module should have exactly one responsibility.
+
+Examples
+
+fetcher.py
+ONLY downloads market data.
+indicators.py
+ONLY calculates indicators.
+analyzer.py
+ONLY analyzes indicators.
+
+Never mix responsibilities.
+
+⸻
+
+2. Stateless
+
+Modules should be stateless whenever possible.
+
+Avoid
+
+global variables
+
+Avoid
+
+module-level cache
+
+Input
+
+↓
+
+Output
+
+Only.
+
+⸻
+
+3. Immutable Data
+
+Prefer dataclass(frozen=True)
+
+instead of mutable dict.
+
+Example
+
+@dataclass(frozen=True)
+class Position:
+    code: str
+    name: str
+    shares: int
+    cost: float
+
+⸻
+
+4. Explainability
+
+Every score
+
+Every suggestion
+
+Every warning
+
+must include reasons.
+
+Bad
+
+Score
+89
+
+Good
+
+Score
+89
+Reasons
+✓ MA20 Up
+✓ MACD Bullish
+✓ Volume Breakout
+
+⸻
+
+System Overview
+
+              portfolio.yaml
+                     │
+                     ▼
+             PortfolioLoader
+                     │
+                     ▼
+               Fetcher (AKShare)
+                     │
+                     ▼
+               OHLCV DataFrame
+                     │
+                     ▼
+             Indicator Calculator
+                     │
+                     ▼
+              IndicatorResult
+                     │
+                     ▼
+                 Analyzer
+                     │
+                     ▼
+              AnalysisResult
+                     │
+                     ▼
+                 Scorer
+                     │
+                     ▼
+                StockScore
+                     │
+                     ▼
+                 Reporter
+                     │
+                     ▼
+        Console / Markdown / CSV
+
+⸻
+
+Module Responsibilities
+
+fetcher.py
+
+Responsibility
+
+Download market data.
+
+Input
+
+Stock code
+
+Output
+
+OHLCV DataFrame
+
+Must NOT
+
+* calculate indicators
+* generate reports
+
+⸻
+
+indicators.py
+
+Input
+
+OHLCV
+
+Output
+
+IndicatorResult
+
+Contains
+
+MA5
+MA10
+MA20
+MA60
+EMA12
+EMA26
+MACD
+Signal
+Histogram
+RSI14
+ATR14
+Volume Ratio
+Highest20
+Lowest20
+
+No analysis should happen here.
+
+Only mathematics.
+
+⸻
+
+analyzer.py
+
+Input
+
+IndicatorResult
+
+Output
+
+AnalysisResult
+
+Responsibilities
+
+Determine
+
+Trend
+
+Bullish
+Neutral
+Bearish
+
+Momentum
+
+Strong
+Medium
+Weak
+
+Risk
+
+Low
+Medium
+High
+
+Support
+
+Resistance
+
+Reasons
+
+No score here.
+
+⸻
+
+scorer.py
+
+Input
+
+AnalysisResult
+
+Output
+
+StockScore
+
+Range
+
+0~100
+
+Weight
+
+Trend
+40
+Volume
+20
+Momentum
+15
+Risk
+15
+Relative Strength
+10
+
+Never hardcode random values.
+
+All weights should be configurable.
+
+⸻
+
+strategy.py
+
+Generate trading suggestions.
+
+Example
+
+Continue Hold
+Reduce Position
+Watch
+Potential Breakout
+Potential Reversal
+
+This module contains trading rules.
+
+No UI.
+
+⸻
+
+reporter.py
+
+Convert results into
+
+Console
+
+Markdown
+
+CSV
+
+Future
+
+HTML
+
+No calculations here.
+
+⸻
+
+Data Models
+
+Use dataclasses.
+
+Never return dict from public APIs.
+
+Example
+
+Position
+↓
+MarketData
+↓
+IndicatorResult
+↓
+AnalysisResult
+↓
+StockScore
+↓
+ReportItem
+
+⸻
+
+Class Diagram
+
+Position
+    │
+    ▼
+MarketData
+    │
+    ▼
+IndicatorResult
+    │
+    ▼
+AnalysisResult
+    │
+    ▼
+StockScore
+    │
+    ▼
+ReportItem
+
+⸻
+
+Indicator Layer
+
+The indicator layer should NEVER perform interpretation.
+
+Example
+
+Correct
+
+RSI = 72.4
+
+Wrong
+
+RSI is overbought.
+
+Interpretation belongs to Analyzer.
+
+⸻
+
+Analyzer Rules
+
+Trend
+
+Bullish
+
+Example
+
+Close > MA20
+MA20 rising
+MACD > Signal
+
+Bearish
+
+Close < MA20
+MA20 falling
+MACD < Signal
+
+Momentum
+
+Strong
+
+MACD expanding
+RSI between 55~75
+Volume > 1.3x Average
+
+Risk
+
+High
+
+RSI > 80
+Long upper shadow
+ATR expanding rapidly
+
+⸻
+
+Strategy Rules
+
+The strategy module converts analysis into actions.
+
+Possible actions
+
+Strong Buy
+Buy
+Accumulate
+Hold
+Watch
+Reduce
+Sell
+
+Every action must include
+
+Reason
+
+Confidence
+
+Example
+
+Suggestion
+Hold
+Confidence
+86%
+Reasons
+✓ Trend Bullish
+✓ MACD Bullish
+✓ Above MA20
+
+⸻
+
+Scoring Philosophy
+
+Score should represent
+
+Probability
+×
+Trend Quality
+×
+Risk
+
+NOT
+
+Expected Profit.
+
+⸻
+
+Relative Strength
+
+Future versions should compare
+
+Stock
+
+vs
+
+Industry
+
+vs
+
+CSI300
+
+vs
+
+ChiNext
+
+Generate
+
+Relative Strength Score
+
+⸻
+
+Portfolio Layer
+
+Portfolio should be independent.
+
+Portfolio only knows
+
+Cost
+Shares
+Cash
+PnL
+
+Portfolio should NOT calculate indicators.
+
+⸻
+
+Persistence
+
+Current version
+
+CSV
+
+Future
+
+SQLite
+
+No ORM.
+
+⸻
+
+Configuration
+
+Everything configurable.
+
+Avoid magic numbers.
+
+Example
+
+trend:
+  ma_short: 5
+  ma_mid: 20
+  ma_long: 60
+score:
+  trend: 40
+  volume: 20
+  momentum: 15
+  risk: 15
+  relative: 10
+
+⸻
+
+Logging
+
+Every module should use logging.
+
+No print() except reporter.
+
+⸻
+
+Testing
+
+Each module should have unit tests.
+
+Target coverage
+
+>90%
+
+Indicator calculations must be deterministic.
+
+⸻
+
+Future Modules
+
+scanner.py
+
+Scan all A-share stocks.
+
+sector.py
+
+Industry strength analysis.
+
+news.py
+
+News aggregation.
+
+ai_summary.py
+
+LLM-generated natural language report.
+
+dashboard.py
+
+Streamlit dashboard.
+
+notification.py
+
+Telegram / Email notifications.
+
+⸻
+
+Development Rules
+
+Every public function
+
+must have
+
+* type hints
+* docstring
+* unit tests
+
+Avoid
+
+* duplicated code
+* hidden state
+* circular imports
+
+Prefer
+
+composition
+
+over inheritance.
+
+⸻
+
+Mission
+
+Build an explainable, maintainable, modular trading assistant.
+
+Every recommendation should be transparent.
+
+Every score should be reproducible.
+
+The human always makes the final investment decision.

@@ -1,0 +1,346 @@
+"""Immutable data models used across StockPilot modules."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class Position:
+    """A stock position configured by the user."""
+
+    code: str
+    name: str
+    cost: float
+    shares: int
+    sector: str = "未分类"
+
+
+@dataclass(frozen=True)
+class Portfolio:
+    """A collection of stock positions."""
+
+    positions: tuple[Position, ...]
+
+
+@dataclass(frozen=True)
+class FetcherSettings:
+    """Configuration for historical market data fetching."""
+
+    start_date: str
+    adjust: str
+    retry_attempts: int
+    fallback_sources: tuple[str, ...]
+    cache_dir: Path | None = None
+
+
+@dataclass(frozen=True)
+class IndicatorSettings:
+    """Configuration for technical indicator calculations."""
+
+    sma_periods: tuple[int, ...]
+    ema_short_period: int
+    ema_long_period: int
+    macd_signal_period: int
+    rsi_period: int
+    atr_period: int
+    volume_ratio_period: int
+    highest_period: int
+    lowest_period: int
+
+
+@dataclass(frozen=True)
+class AnalyzerSettings:
+    """Configuration for indicator interpretation in the analyzer layer."""
+
+    trend_short_ma_period: int
+    trend_mid_ma_period: int
+    trend_long_ma_period: int
+    momentum_rsi_lower: float
+    momentum_rsi_upper: float
+    volume_breakout_ratio: float
+    risk_rsi_high: float
+    risk_atr_pct_high: float
+    support_resistance_period: int
+    shrink_volume_ratio: float = 0.8
+    strong_volume_ratio: float = 1.2
+    breakout_volume_ratio: float = 1.8
+    abnormal_drawdown_pct: float = -0.05
+    long_upper_shadow_ratio: float = 0.45
+
+
+@dataclass(frozen=True)
+class ScorerSettings:
+    """Configuration for explainable score calculation."""
+
+    trend_weight: int
+    momentum_weight: int
+    volume_weight: int
+    risk_weight: int
+    relative_strength_weight: int
+    reason_confidence_step: float
+    minimum_confidence: float
+    maximum_confidence: float
+
+
+@dataclass(frozen=True)
+class ReportSettings:
+    """Configuration for persisted report outputs."""
+
+    output_dir: Path
+    history_csv: Path
+
+
+@dataclass(frozen=True)
+class SummarySettings:
+    """Configuration for deterministic natural-language summaries."""
+
+    watchlist_limit: int
+    high_risk_levels: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScannerSettings:
+    """Configuration for candidate scanning and ranking."""
+
+    candidate_limit: int
+    min_score: int
+    allowed_risk_levels: tuple[str, ...]
+    required_trend: str = "Bullish"
+    min_relative_strength_score: int = 60
+    min_volume_statuses: tuple[str, ...] = ("Normal", "Strong", "Breakout")
+
+
+@dataclass(frozen=True)
+class DecisionSettings:
+    """Configuration for trading decision support."""
+
+    high_score_threshold: int
+    low_score_threshold: int
+    high_confidence_threshold: float
+
+
+@dataclass(frozen=True)
+class AppSettings:
+    """Application-level configuration."""
+
+    fetcher: FetcherSettings
+    indicators: IndicatorSettings
+    analyzer: AnalyzerSettings
+    scorer: ScorerSettings
+    report: ReportSettings
+    summary: SummarySettings
+    scanner: ScannerSettings
+    decision: DecisionSettings
+    log_level: str
+
+
+@dataclass(frozen=True)
+class MarketData:
+    """Daily OHLCV market data for one stock."""
+
+    code: str
+    name: str
+    frame: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class FetchResult:
+    """Result of attempting to fetch market data for a position."""
+
+    position: Position
+    market_data: MarketData | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class IndicatorResult:
+    """Technical indicator values for one stock."""
+
+    code: str
+    name: str
+    frame: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class IndicatorCalculationResult:
+    """Result of attempting to calculate indicators for a fetched stock."""
+
+    position: Position
+    indicators: IndicatorResult | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class PositionValuation:
+    """Valuation and profit/loss metrics for one position."""
+
+    code: str
+    name: str
+    shares: int
+    cost_price: float
+    cost_amount: float
+    current_price: float
+    previous_close: float | None
+    market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+    daily_pnl: float | None
+    daily_pnl_pct: float | None
+    sector: str = "未分类"
+
+
+@dataclass(frozen=True)
+class PortfolioValuation:
+    """Aggregated valuation metrics for a portfolio."""
+
+    positions: tuple[PositionValuation, ...]
+    total_cost: float
+    total_market_value: float
+    total_unrealized_pnl: float
+    total_unrealized_pnl_pct: float
+    total_daily_pnl: float | None
+
+
+@dataclass(frozen=True)
+class PortfolioValuationResult:
+    """Result of attempting to calculate portfolio valuation."""
+
+    valuation: PortfolioValuation | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    """Explainable analysis derived from technical indicators."""
+
+    code: str
+    name: str
+    trend: str
+    momentum: str
+    risk: str
+    support: float | None
+    resistance: float | None
+    reasons: tuple[str, ...]
+    sector: str = "未分类"
+    stock_return: float | None = None
+    volume_status: str = "Unknown"
+    volume_reason: str = ""
+    primary_support: float | None = None
+    secondary_support: float | None = None
+    primary_resistance: float | None = None
+    secondary_resistance: float | None = None
+
+
+@dataclass(frozen=True)
+class AnalysisCalculationResult:
+    """Result of attempting to analyze one indicator result."""
+
+    position: Position
+    analysis: AnalysisResult | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class ScoreComponent:
+    """A named contribution to the final stock score."""
+
+    name: str
+    score: int
+    weight: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class StockScore:
+    """Explainable 0-100 stock score derived from analysis output."""
+
+    code: str
+    name: str
+    score: int
+    rating: str
+    risk: str
+    confidence: float
+    components: tuple[ScoreComponent, ...]
+    reasons: tuple[str, ...]
+    relative_strength_score: int = 50
+
+
+@dataclass(frozen=True)
+class ScoreCalculationResult:
+    """Result of attempting to score one analysis result."""
+
+    position: Position
+    score: StockScore | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class DailySummary:
+    """Natural-language daily summary derived from scored portfolio results."""
+
+    strongest_stock: str | None
+    weakest_stock: str | None
+    today_risk: str
+    tomorrow_watchlist: tuple[str, ...]
+    conclusion: str
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScanCandidate:
+    """A ranked stock candidate produced by the scanner."""
+
+    code: str
+    name: str
+    score: int
+    rating: str
+    risk: str
+    confidence: float
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScannerResult:
+    """Ranked scanner candidates and skipped stock count."""
+
+    candidates: tuple[ScanCandidate, ...]
+    skipped_count: int
+
+
+@dataclass(frozen=True)
+class DecisionResult:
+    """Actionable decision support for one stock."""
+
+    code: str
+    name: str
+    action: str
+    confidence: float
+    risk: str
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DecisionCalculationResult:
+    """Result of attempting to generate a decision for one stock."""
+
+    position: Position
+    decision: DecisionResult | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class PortfolioAnalysis:
+    """Portfolio-level exposure and risk analysis."""
+
+    sector_exposures: tuple[tuple[str, float], ...]
+    concentration_top_position_pct: float
+    largest_winner: str | None
+    largest_loser: str | None
+    highest_risk_position: str | None
+    weakest_relative_position: str | None
+    portfolio_trend_score: float
+    portfolio_risk_score: float

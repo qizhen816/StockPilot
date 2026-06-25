@@ -1,0 +1,2 @@
+"""StockPilot package."""
+

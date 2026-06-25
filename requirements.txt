@@ -1,0 +1,6 @@
+akshare>=1.17
+pandas>=2.2
+numpy>=2.0
+PyYAML>=6.0
+rich>=14.0
+matplotlib>=3.10
