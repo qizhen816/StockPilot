@@ -165,7 +165,7 @@ v0.9 Dashboard
 
 Status
 
-Next
+Completed
 
 Streamlit UI.
 
@@ -176,6 +176,10 @@ Portfolio overview.
 ⸻
 
 v1.0
+
+Status
+
+Completed
 
 Daily trading assistant.
 
@@ -192,6 +196,65 @@ Telegram
 Email
 
 Ready.
+
+⸻
+
+v1.1 Portfolio Decision Engine
+
+Status
+
+Completed
+
+Shift focus from individual stock analysis to portfolio management.
+
+Generate
+
+* Portfolio-aware actions
+* Increase / Hold / Reduce / Replace / Exit / Watch
+* Dynamic decision confidence
+* Replacement suggestions
+* Tomorrow-focused portfolio plan
+* Dashboard plan view
+
+⸻
+
+v1.2 Relative Strength & Market Session
+
+Status
+
+Completed
+
+Improve decision quality with clearer relative-strength ranking and
+market-session-aware analysis.
+
+Generate
+
+* Portfolio relative strength rank
+* Sector relative strength rank
+* Chinese analysis reasons
+* Previous-close analysis before 15:00
+* Today operation advice before market close
+
+⸻
+
+v1.2.1 Polish
+
+Status
+
+Completed
+
+Improve consistency, readability, and professional decision quality.
+
+Refine
+
+* Score capped at 95
+* Confidence capped at 90%
+* Strong Hold replaces Increase Position
+* Existing holdings avoid Avoid Buying actions
+* Portfolio risk explanations
+* Replacement improvement breakdown
+* Portfolio relative / risk / trend ranks
+* More natural rule-based summary
 
 ⸻
 

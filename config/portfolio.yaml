@@ -1,29 +1,41 @@
 stocks:
   "600062":
     name: 华润双鹤
-    cost: 17.855
+    cost: 18.280
     shares: 500
+    sector: Medicine
   "002156":
     name: 通富微电
     cost: 74.041
     shares: 100
+    sector: Semiconductor
   "002262":
     name: 恩华药业
-    cost: 29.631
+    cost: 33.941
     shares: 300
+    sector: Medicine
   "002436":
     name: 兴森科技
     cost: 50.411
     shares: 100
+    sector: PCB
   "600483":
     name: 福能股份
     cost: 11.759
     shares: 300
+    sector: Power
+  "600667":
+    name: 太极实业
+    cost: 26.341
+    shares: 100
+    sector: Semiconductor
   "002201":
     name: 九鼎新材
     cost: 13.365
     shares: 200
+    sector: Others
   "000901":
     name: 航天科技
     cost: 39.374
     shares: 100
+    sector: Defense

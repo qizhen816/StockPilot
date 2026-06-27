@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from stock_pilot.models import (
     AnalysisCalculationResult,
     AnalysisResult,
@@ -19,8 +21,9 @@ def _settings() -> ScorerSettings:
         risk_weight=15,
         relative_strength_weight=10,
         reason_confidence_step=0.04,
-        minimum_confidence=0.50,
-        maximum_confidence=0.95,
+        minimum_confidence=0.55,
+        maximum_confidence=0.90,
+        maximum_score=95,
     )
 
 
@@ -47,7 +50,7 @@ def test_score_engine_scores_bullish_low_risk_analysis() -> None:
     assert score.score == 95
     assert score.rating == "★★★★★"
     assert score.risk == "Low"
-    assert score.confidence == 0.66
+    assert score.confidence == pytest.approx(0.71)
     assert len(score.components) == 5
     assert "Trend is Bullish" in score.reasons
     assert "Volume breakout confirmed" in score.reasons
@@ -94,3 +97,43 @@ def test_score_all_preserves_analysis_failures() -> None:
     assert scored[0].position == position
     assert scored[0].score is None
     assert scored[0].error == "analysis failed"
+
+
+def test_score_all_uses_portfolio_relative_strength_ranking() -> None:
+    """ScoreEngine should rank relative strength across analyzed holdings."""
+    position_a = Position(code="002436", name="兴森科技", cost=10.0, shares=100)
+    position_b = Position(code="002156", name="通富微电", cost=20.0, shares=100)
+    analysis_a = _analysis("002436", "兴森科技", 0.04)
+    analysis_b = _analysis("002156", "通富微电", -0.02)
+
+    scored = ScoreEngine(_settings()).score_all(
+        (
+            AnalysisCalculationResult(position=position_a, analysis=analysis_a),
+            AnalysisCalculationResult(position=position_b, analysis=analysis_b),
+        )
+    )
+
+    assert scored[0].score is not None
+    assert scored[1].score is not None
+    assert scored[0].score.relative_strength_score > (
+        scored[1].score.relative_strength_score
+    )
+    assert any(
+        reason.startswith("Relative strength rank 1 of 2")
+        for reason in scored[0].score.reasons
+    )
+
+
+def _analysis(code: str, name: str, stock_return: float) -> AnalysisResult:
+    return AnalysisResult(
+        code=code,
+        name=name,
+        trend="Bullish",
+        momentum="Strong",
+        risk="Low",
+        support=10.0,
+        resistance=15.0,
+        reasons=("Close above MA20", "Volume breakout"),
+        sector="科技",
+        stock_return=stock_return,
+    )

@@ -8,11 +8,14 @@ from pathlib import Path
 
 from stock_pilot.models import (
     AnalysisCalculationResult,
+    AnalysisDataSnapshot,
     AnalysisResult,
     DailySummary,
     DecisionCalculationResult,
     DecisionResult,
+    PortfolioAction,
     PortfolioAnalysis,
+    PortfolioDecisionPlan,
     PortfolioValuation,
     PortfolioValuationResult,
     Position,
@@ -35,6 +38,9 @@ def test_markdown_reporter_writes_chinese_daily_report(tmp_path: Path) -> None:
     content = path.read_text(encoding="utf-8")
     assert path.name == "2026-06-25.md"
     assert "# StockPilot 日报 2026-06-25" in content
+    assert "## 分析口径" in content
+    assert "## 明日组合计划" in content
+    assert "强势持有" in content
     assert "兴森科技（002436）" in content
     assert "趋势偏多" in content
     assert "收盘价位于 MA20 上方" in content
@@ -111,6 +117,12 @@ def _payload() -> DailyReportPayload:
 
     return DailyReportPayload(
         report_date=date(2026, 6, 25),
+        analysis_snapshot=AnalysisDataSnapshot(
+            data_date="2026-06-25",
+            is_using_previous_close=False,
+            advice_horizon="tomorrow",
+            reason="Market close cutoff has passed; using latest daily bar",
+        ),
         fetch_results=(),
         portfolio_valuation=PortfolioValuationResult(valuation=valuation),
         portfolio_analysis=PortfolioAnalysis(
@@ -122,6 +134,42 @@ def _payload() -> DailyReportPayload:
             weakest_relative_position="兴森科技（002436）",
             portfolio_trend_score=95.0,
             portfolio_risk_score=25.0,
+            portfolio_risk_level="Low",
+            portfolio_risk_reasons=(
+                "Portfolio risk is balanced across current holdings",
+            ),
+        ),
+        portfolio_decision_plan=PortfolioDecisionPlan(
+            actions=(
+                PortfolioAction(
+                    code="002436",
+                    name="兴森科技",
+                    action="Strong Hold",
+                    confidence=0.88,
+                    risk="Low",
+                    score=95,
+                    rank=1,
+                    relative_rank=1,
+                    risk_rank=1,
+                    trend_rank=1,
+                    total_positions=1,
+                    relative_strength_score=50,
+                    replacement=None,
+                    reasons=(
+                        "Portfolio rank 1 of 1",
+                        "Score is 95",
+                        "Trend is Bullish",
+                    ),
+                ),
+            ),
+            replacements=(),
+            portfolio_score=95.0,
+            portfolio_risk_score=25.0,
+            summary="明日组合重点是继续跟踪 兴森科技，重点防守 兴森科技。",
+            reasons=(
+                "Portfolio trend score is 95.00",
+                "Portfolio risk score is 25.00",
+            ),
         ),
         indicator_results=(),
         analysis_results=(
@@ -136,7 +184,7 @@ def _payload() -> DailyReportPayload:
                 decision=DecisionResult(
                     code="002436",
                     name="兴森科技",
-                    action="Continue Hold",
+                    action="Strong Hold",
                     confidence=0.8,
                     risk="Low",
                     reasons=("Score 95 with rating ★★★★★",),
@@ -148,6 +196,7 @@ def _payload() -> DailyReportPayload:
             weakest_stock="兴森科技（002436）",
             today_risk="今日组合未出现高风险个股。",
             tomorrow_watchlist=("兴森科技（002436）：95 分，风险低",),
+            operation_advice="明日操作建议：继续跟踪强势品种 兴森科技。",
             conclusion="今日组合最强的是 兴森科技。",
             reasons=("最强个股来自最高评分：兴森科技 95 分。",),
         ),

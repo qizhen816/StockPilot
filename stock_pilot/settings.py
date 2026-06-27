@@ -12,12 +12,17 @@ from stock_pilot.models import (
     AnalyzerSettings,
     AppSettings,
     DecisionSettings,
+    EmailSettings,
     FetcherSettings,
     IndicatorSettings,
+    MarketSessionSettings,
+    NotificationSettings,
+    PortfolioDecisionSettings,
     ReportSettings,
     ScannerSettings,
     ScorerSettings,
     SummarySettings,
+    TelegramSettings,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +78,20 @@ class SettingsLoader:
         decision_settings = raw_settings.get("decision", {})
         if not isinstance(decision_settings, dict):
             raise SettingsError("settings.yaml decision must be a mapping")
+
+        portfolio_decision_settings = raw_settings.get("portfolio_decision")
+        if not isinstance(portfolio_decision_settings, dict):
+            raise SettingsError(
+                "settings.yaml must contain a 'portfolio_decision' mapping"
+            )
+
+        market_session_settings = raw_settings.get("market_session")
+        if not isinstance(market_session_settings, dict):
+            raise SettingsError("settings.yaml must contain a 'market_session' mapping")
+
+        notification_settings = raw_settings.get("notification")
+        if not isinstance(notification_settings, dict):
+            raise SettingsError("settings.yaml must contain a 'notification' mapping")
 
         log_level = str(raw_settings.get("log_level", "INFO")).upper()
 
@@ -207,6 +226,56 @@ class SettingsLoader:
                     decision_settings, "high_confidence_threshold", 0.75
                 ),
             ),
+            portfolio_decision=PortfolioDecisionSettings(
+                strong_hold_score_threshold=_required_positive_int(
+                    portfolio_decision_settings,
+                    "strong_hold_score_threshold",
+                    "portfolio_decision",
+                ),
+                hold_score_threshold=_required_positive_int(
+                    portfolio_decision_settings,
+                    "hold_score_threshold",
+                    "portfolio_decision",
+                ),
+                reduce_score_threshold=_required_positive_int(
+                    portfolio_decision_settings,
+                    "reduce_score_threshold",
+                    "portfolio_decision",
+                ),
+                exit_score_threshold=_required_positive_int(
+                    portfolio_decision_settings,
+                    "exit_score_threshold",
+                    "portfolio_decision",
+                ),
+                replace_score_threshold=_required_positive_int(
+                    portfolio_decision_settings,
+                    "replace_score_threshold",
+                    "portfolio_decision",
+                ),
+                replacement_min_score_gap=_required_positive_int(
+                    portfolio_decision_settings,
+                    "replacement_min_score_gap",
+                    "portfolio_decision",
+                ),
+                minimum_confidence=_required_number(
+                    portfolio_decision_settings,
+                    "minimum_confidence",
+                    "portfolio_decision",
+                ),
+                maximum_confidence=_required_number(
+                    portfolio_decision_settings,
+                    "maximum_confidence",
+                    "portfolio_decision",
+                ),
+            ),
+            market_session=MarketSessionSettings(
+                analysis_cutoff_time=_required_time_string(
+                    market_session_settings,
+                    "analysis_cutoff_time",
+                    "market_session",
+                ),
+            ),
+            notification=_build_notification_settings(notification_settings),
             log_level=log_level,
         )
 
@@ -287,11 +356,40 @@ def _required_number(mapping: dict[str, Any], key: str, section: str) -> float:
     return float(value)
 
 
+def _required_bool(mapping: dict[str, Any], key: str, section: str) -> bool:
+    value = mapping.get(key)
+    if not isinstance(value, bool):
+        raise SettingsError(f"{section}.{key} must be a boolean")
+    return value
+
+
+def _required_time_string(mapping: dict[str, Any], key: str, section: str) -> str:
+    value = _required_string(mapping, key, section)
+    parts = value.split(":")
+    if len(parts) != 2:
+        raise SettingsError(f"{section}.{key} must use HH:MM format")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError as exc:
+        raise SettingsError(f"{section}.{key} must use HH:MM format") from exc
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise SettingsError(f"{section}.{key} must use HH:MM format")
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _optional_number(mapping: dict[str, Any], key: str, default: float) -> float:
     value = mapping.get(key, default)
     if not isinstance(value, int | float):
         raise SettingsError(f"{key} must be a number")
     return float(value)
+
+
+def _optional_bool(mapping: dict[str, Any], key: str, default: bool) -> bool:
+    value = mapping.get(key, default)
+    if not isinstance(value, bool):
+        raise SettingsError(f"{key} must be a boolean")
+    return value
 
 
 def _optional_positive_int(mapping: dict[str, Any], key: str, default: int) -> int:
@@ -319,6 +417,15 @@ def _optional_string_tuple(
     return tuple(item.strip() for item in value)
 
 
+def _optional_string_list(mapping: dict[str, Any], key: str) -> tuple[str, ...]:
+    value = mapping.get(key, [])
+    if not isinstance(value, list):
+        raise SettingsError(f"{key} must be a string list")
+    if not all(isinstance(item, str) and item.strip() for item in value):
+        raise SettingsError(f"{key} must contain non-empty strings")
+    return tuple(item.strip() for item in value)
+
+
 def _build_scorer_settings(raw_settings: dict[str, Any]) -> ScorerSettings:
     settings = ScorerSettings(
         trend_weight=_required_positive_int(raw_settings, "trend_weight", "scorer"),
@@ -339,6 +446,7 @@ def _build_scorer_settings(raw_settings: dict[str, Any]) -> ScorerSettings:
         maximum_confidence=_required_number(
             raw_settings, "maximum_confidence", "scorer"
         ),
+        maximum_score=_required_positive_int(raw_settings, "maximum_score", "scorer"),
     )
     total_weight = (
         settings.trend_weight
@@ -350,3 +458,49 @@ def _build_scorer_settings(raw_settings: dict[str, Any]) -> ScorerSettings:
     if total_weight != 100:
         raise SettingsError("scorer weights must sum to 100")
     return settings
+
+
+def _build_notification_settings(raw_settings: dict[str, Any]) -> NotificationSettings:
+    telegram_settings = raw_settings.get("telegram")
+    if not isinstance(telegram_settings, dict):
+        raise SettingsError("notification.telegram must be a mapping")
+
+    email_settings = raw_settings.get("email")
+    if not isinstance(email_settings, dict):
+        raise SettingsError("notification.email must be a mapping")
+
+    return NotificationSettings(
+        enabled=_required_bool(raw_settings, "enabled", "notification"),
+        dry_run=_required_bool(raw_settings, "dry_run", "notification"),
+        telegram=TelegramSettings(
+            enabled=_required_bool(
+                telegram_settings, "enabled", "notification.telegram"
+            ),
+            bot_token_env=_required_string(
+                telegram_settings, "bot_token_env", "notification.telegram"
+            ),
+            chat_id_env=_required_string(
+                telegram_settings, "chat_id_env", "notification.telegram"
+            ),
+        ),
+        email=EmailSettings(
+            enabled=_required_bool(email_settings, "enabled", "notification.email"),
+            smtp_host=_required_string(
+                email_settings, "smtp_host", "notification.email"
+            ),
+            smtp_port=_required_positive_int(
+                email_settings, "smtp_port", "notification.email"
+            ),
+            username_env=_required_string(
+                email_settings, "username_env", "notification.email"
+            ),
+            password_env=_required_string(
+                email_settings, "password_env", "notification.email"
+            ),
+            sender_env=_required_string(
+                email_settings, "sender_env", "notification.email"
+            ),
+            recipients=_optional_string_list(email_settings, "recipients"),
+            use_tls=_optional_bool(email_settings, "use_tls", True),
+        ),
+    )

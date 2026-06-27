@@ -71,7 +71,9 @@ class PortfolioLoader:
         name = _required_string(data, "name", code)
         cost = _required_float(data, "cost", code)
         shares = _required_int(data, "shares", code)
-        sector = _optional_string(data, "sector", "未分类")
+        sector = _normalize_sector(
+            _optional_string(data, "sector", _infer_sector(name))
+        )
 
         if shares <= 0:
             raise PortfolioError(f"Stock {code}.shares must be greater than zero")
@@ -113,6 +115,36 @@ def _optional_string(mapping: dict[str, Any], key: str, default: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise PortfolioError(f"Stock {key} must be a non-empty string")
     return value.strip()
+
+
+def _infer_sector(name: str) -> str:
+    rules = (
+        ("Semiconductor", ("半导体", "太极", "通富")),
+        ("PCB", ("兴森", "PCB")),
+        ("Medicine", ("药", "双鹤", "恩华")),
+        ("Power", ("电力", "福能")),
+        ("Defense", ("航天", "军工", "Defense")),
+        ("AI", ("人工智能", "AI")),
+    )
+    for sector, keywords in rules:
+        if any(keyword in name for keyword in keywords):
+            return sector
+    return "Others"
+
+
+def _normalize_sector(value: str) -> str:
+    aliases = {
+        "未分类": "Others",
+        "Unknown": "Others",
+        "Other": "Others",
+        "科技": "Technology",
+        "医药": "Medicine",
+        "医疗": "Medicine",
+        "电力": "Power",
+        "半导体": "Semiconductor",
+        "军工": "Defense",
+    }
+    return aliases.get(value, value)
 
 
 class PortfolioValuationCalculator:
@@ -257,6 +289,8 @@ class PortfolioAnalyzer:
                 weakest_relative_position=None,
                 portfolio_trend_score=0.0,
                 portfolio_risk_score=0.0,
+                portfolio_risk_level="Unknown",
+                portfolio_risk_reasons=("Portfolio valuation is unavailable",),
             )
 
         valuation = valuation_result.valuation
@@ -265,6 +299,11 @@ class PortfolioAnalyzer:
             for result in score_results
             if result.score is not None
         }
+        risk_score = _portfolio_risk_score(score_results)
+        risk_reasons = _portfolio_risk_reasons(
+            valuation=valuation,
+            score_results=score_results,
+        )
         return PortfolioAnalysis(
             sector_exposures=_sector_exposures(valuation),
             concentration_top_position_pct=_top_concentration(valuation),
@@ -273,7 +312,9 @@ class PortfolioAnalyzer:
             highest_risk_position=_highest_risk_position(score_results),
             weakest_relative_position=_weakest_relative_position(score_results),
             portfolio_trend_score=_average_score(score_by_code),
-            portfolio_risk_score=_portfolio_risk_score(score_results),
+            portfolio_risk_score=risk_score,
+            portfolio_risk_level=_portfolio_risk_level(risk_score),
+            portfolio_risk_reasons=risk_reasons,
         )
 
 
@@ -346,3 +387,46 @@ def _portfolio_risk_score(
     if not scores:
         return 0.0
     return sum(risk_points.get(score.risk, 50.0) for score in scores) / len(scores)
+
+
+def _portfolio_risk_level(risk_score: float) -> str:
+    if risk_score >= 70:
+        return "High"
+    if risk_score >= 40:
+        return "Medium"
+    return "Low"
+
+
+def _portfolio_risk_reasons(
+    valuation: PortfolioValuation,
+    score_results: tuple[ScoreCalculationResult, ...],
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    top_concentration = _top_concentration(valuation)
+    if top_concentration >= 0.25:
+        reasons.append(f"Largest position concentration is {top_concentration:.0%}")
+
+    sector_exposures = _sector_exposures(valuation)
+    if sector_exposures and sector_exposures[0][1] >= 0.45:
+        sector, weight = sector_exposures[0]
+        reasons.append(f"{sector} exposure is relatively high at {weight:.0%}")
+
+    high_risk = [
+        result.score.name
+        for result in score_results
+        if result.score is not None and result.score.risk == "High"
+    ]
+    if high_risk:
+        reasons.append("High-risk holdings: " + "、".join(high_risk))
+
+    losing_positions = [
+        position.name
+        for position in valuation.positions
+        if position.unrealized_pnl < 0
+    ]
+    if losing_positions:
+        reasons.append("Drawdown positions: " + "、".join(losing_positions[:3]))
+
+    if not reasons:
+        reasons.append("Portfolio risk is balanced across current holdings")
+    return tuple(reasons)

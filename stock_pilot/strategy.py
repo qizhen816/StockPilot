@@ -62,16 +62,22 @@ class DecisionEngine:
     ) -> DecisionResult:
         """Generate one explainable trading decision."""
         reasons = [
-            f"Score {score.score} with rating {score.rating}",
-            f"Risk is {score.risk}",
-            f"Relative strength score is {score.relative_strength_score}",
         ]
         if analysis is not None:
             reasons.append(f"Trend is {analysis.trend}")
+        reasons.extend(
+            (
+                f"Relative strength score is {score.relative_strength_score}",
+                f"Risk is {score.risk}",
+            )
+        )
+        if analysis is not None:
             reasons.append(f"Volume status is {analysis.volume_status}")
+            reasons.append(f"Momentum is {analysis.momentum}")
+        reasons.append(f"Score {score.score} with rating {score.rating}")
 
         action = self._action(score, analysis)
-        confidence = min(0.95, max(score.confidence, 0.55))
+        confidence = min(0.90, max(score.confidence, 0.55))
         return DecisionResult(
             code=score.code,
             name=score.name,
@@ -83,15 +89,17 @@ class DecisionEngine:
 
     def _action(self, score: StockScore, analysis: AnalysisResult | None) -> str:
         action = "Hold"
-        if score.risk == "High":
+        if score.risk == "High" and score.score <= 40:
+            action = "Exit"
+        elif score.risk == "High":
             action = "Reduce Position"
         elif score.score >= self._settings.high_score_threshold:
             if analysis is not None and analysis.trend == "Bullish":
-                action = "Continue Hold"
+                action = "Strong Hold"
         elif score.score < self._settings.low_score_threshold:
-            action = "Avoid Buying"
+            action = "Watch"
         elif analysis is not None and analysis.trend == "Bullish":
-            action = "Accumulate"
+            action = "Hold"
         elif analysis is not None and analysis.risk == "Medium":
             action = "Watch"
         return action

@@ -48,8 +48,9 @@ scorer:
   risk_weight: 15
   relative_strength_weight: 10
   reason_confidence_step: 0.04
-  minimum_confidence: 0.50
-  maximum_confidence: 0.95
+  minimum_confidence: 0.55
+  maximum_confidence: 0.90
+  maximum_score: 95
 report:
   output_dir: reports/daily
   history_csv: reports/history.csv
@@ -60,6 +61,33 @@ scanner:
   candidate_limit: 5
   min_score: 70
   allowed_risk_levels: ["Low", "Medium"]
+portfolio_decision:
+  strong_hold_score_threshold: 85
+  hold_score_threshold: 70
+  reduce_score_threshold: 55
+  exit_score_threshold: 40
+  replace_score_threshold: 60
+  replacement_min_score_gap: 12
+  minimum_confidence: 0.55
+  maximum_confidence: 0.90
+market_session:
+  analysis_cutoff_time: "15:00"
+notification:
+  enabled: false
+  dry_run: true
+  telegram:
+    enabled: false
+    bot_token_env: STOCKPILOT_TELEGRAM_BOT_TOKEN
+    chat_id_env: STOCKPILOT_TELEGRAM_CHAT_ID
+  email:
+    enabled: false
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    username_env: STOCKPILOT_EMAIL_USERNAME
+    password_env: STOCKPILOT_EMAIL_PASSWORD
+    sender_env: STOCKPILOT_EMAIL_SENDER
+    recipients: []
+    use_tls: true
 """,
         encoding="utf-8",
     )
@@ -77,6 +105,7 @@ scanner:
     assert settings.analyzer.volume_breakout_ratio == 1.3
     assert settings.scorer.trend_weight == 40
     assert settings.scorer.relative_strength_weight == 10
+    assert settings.scorer.maximum_score == 95
     assert settings.report.output_dir == Path("reports/daily")
     assert settings.report.history_csv == Path("reports/history.csv")
     assert settings.summary.watchlist_limit == 3
@@ -84,6 +113,17 @@ scanner:
     assert settings.scanner.candidate_limit == 5
     assert settings.scanner.min_score == 70
     assert settings.scanner.allowed_risk_levels == ("Low", "Medium")
+    assert settings.portfolio_decision.strong_hold_score_threshold == 85
+    assert settings.portfolio_decision.replacement_min_score_gap == 12
+    assert settings.portfolio_decision.maximum_confidence == 0.90
+    assert settings.market_session.analysis_cutoff_time == "15:00"
+    assert settings.notification.enabled is False
+    assert settings.notification.dry_run is True
+    assert settings.notification.telegram.bot_token_env == (
+        "STOCKPILOT_TELEGRAM_BOT_TOKEN"
+    )
+    assert settings.notification.email.smtp_port == 587
+    assert settings.notification.email.recipients == ()
 
 
 def test_settings_loader_requires_fetcher_section(tmp_path: Path) -> None:

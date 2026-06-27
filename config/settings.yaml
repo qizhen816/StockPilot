@@ -41,8 +41,9 @@ scorer:
   risk_weight: 20
   relative_strength_weight: 20
   reason_confidence_step: 0.04
-  minimum_confidence: 0.50
-  maximum_confidence: 0.95
+  minimum_confidence: 0.55
+  maximum_confidence: 0.90
+  maximum_score: 95
 
 report:
   output_dir: "reports/daily"
@@ -64,3 +65,33 @@ decision:
   high_score_threshold: 80
   low_score_threshold: 55
   high_confidence_threshold: 0.75
+
+portfolio_decision:
+  strong_hold_score_threshold: 85
+  hold_score_threshold: 70
+  reduce_score_threshold: 55
+  exit_score_threshold: 40
+  replace_score_threshold: 60
+  replacement_min_score_gap: 12
+  minimum_confidence: 0.55
+  maximum_confidence: 0.90
+
+market_session:
+  analysis_cutoff_time: "15:00"
+
+notification:
+  enabled: false
+  dry_run: true
+  telegram:
+    enabled: false
+    bot_token_env: "STOCKPILOT_TELEGRAM_BOT_TOKEN"
+    chat_id_env: "STOCKPILOT_TELEGRAM_CHAT_ID"
+  email:
+    enabled: false
+    smtp_host: "smtp.example.com"
+    smtp_port: 587
+    username_env: "STOCKPILOT_EMAIL_USERNAME"
+    password_env: "STOCKPILOT_EMAIL_PASSWORD"
+    sender_env: "STOCKPILOT_EMAIL_SENDER"
+    recipients: []
+    use_tls: true

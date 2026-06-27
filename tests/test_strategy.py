@@ -13,8 +13,8 @@ from stock_pilot.strategy import DecisionEngine
 from tests.test_ai_summary import _score
 
 
-def test_decision_engine_generates_continue_hold_for_strong_bullish_stock() -> None:
-    """DecisionEngine should continue holding high-score bullish stocks."""
+def test_decision_engine_generates_strong_hold_for_strong_bullish_stock() -> None:
+    """DecisionEngine should strongly hold high-score bullish positions."""
     position = Position(code="002436", name="兴森科技", cost=10.0, shares=100)
     score = _score("002436", "兴森科技", 88, "Low")
     analysis = AnalysisResult(
@@ -36,7 +36,7 @@ def test_decision_engine_generates_continue_hold_for_strong_bullish_stock() -> N
     )
 
     assert result[0].decision is not None
-    assert result[0].decision.action == "Continue Hold"
+    assert result[0].decision.action == "Strong Hold"
     assert result[0].decision.risk == "Low"
 
 

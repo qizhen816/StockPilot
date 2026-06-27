@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from stock_pilot.ai_summary import DailySummaryGenerator
 from stock_pilot.models import (
+    AnalysisDataSnapshot,
     PortfolioValuation,
     PortfolioValuationResult,
     Position,
@@ -43,7 +44,34 @@ def test_daily_summary_identifies_strongest_weakest_and_watchlist() -> None:
         "通富微电（002156）：42 分，风险高",
     )
     assert "通富微电" in summary.today_risk
-    assert "最强的是 兴森科技" in summary.conclusion
+    assert "当前最强持仓是 兴森科技" in summary.conclusion
+    assert "明日操作建议" in summary.operation_advice
+
+
+def test_daily_summary_generates_today_advice_before_cutoff() -> None:
+    """DailySummaryGenerator should produce today advice for pre-close snapshots."""
+    settings = SummarySettings(watchlist_limit=2, high_risk_levels=("High",))
+    position = Position(code="002436", name="兴森科技", cost=10.0, shares=100)
+
+    summary = DailySummaryGenerator(settings).generate(
+        score_results=(
+            ScoreCalculationResult(
+                position=position,
+                score=_score("002436", "兴森科技", 88, "Low"),
+            ),
+        ),
+        analysis_results=(),
+        portfolio_valuation=_valuation(),
+        analysis_snapshot=AnalysisDataSnapshot(
+            data_date="2026-06-25",
+            is_using_previous_close=True,
+            advice_horizon="today",
+            reason="Before market close cutoff; using previous completed close",
+        ),
+    )
+
+    assert "今天操作建议" in summary.operation_advice
+    assert "上一完整收盘日" in summary.operation_advice
 
 
 def test_daily_summary_handles_missing_scores() -> None:
@@ -59,6 +87,7 @@ def test_daily_summary_handles_missing_scores() -> None:
     assert summary.strongest_stock is None
     assert summary.weakest_stock is None
     assert summary.tomorrow_watchlist == ()
+    assert "今天不建议" in summary.operation_advice
     assert "没有可用评分" in summary.conclusion
 
 

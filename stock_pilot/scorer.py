@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from stock_pilot.models import (
     AnalysisCalculationResult,
@@ -16,6 +17,12 @@ from stock_pilot.models import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class _RelativeStrengthMetric:
+    score: int
+    reason: str
+
+
 class ScoreEngine:
     """Convert analysis output into explainable 0-100 stock scores."""
 
@@ -27,6 +34,7 @@ class ScoreEngine:
         self,
         analysis: AnalysisResult,
         relative_strength_score: int = 50,
+        relative_strength_reason: str | None = None,
     ) -> StockScore:
         """Score one analysis result with component-level explanations."""
         components = (
@@ -34,10 +42,14 @@ class ScoreEngine:
             self._momentum_component(analysis),
             self._volume_component(analysis),
             self._risk_component(analysis),
-            self._relative_strength_component(relative_strength_score),
+            self._relative_strength_component(
+                relative_strength_score,
+                relative_strength_reason
+                or f"Relative strength score is {relative_strength_score}",
+            ),
         )
         total_score = sum(component.score for component in components)
-        clamped_score = max(0, min(100, total_score))
+        clamped_score = max(0, min(self._settings.maximum_score, total_score))
 
         return StockScore(
             code=analysis.code,
@@ -56,7 +68,7 @@ class ScoreEngine:
     ) -> tuple[ScoreCalculationResult, ...]:
         """Score all successful analysis results without stopping on failures."""
         results: list[ScoreCalculationResult] = []
-        relative_scores = _relative_strength_scores(analysis_results)
+        relative_metrics = _relative_strength_metrics(analysis_results)
         for analysis_result in analysis_results:
             if analysis_result.analysis is None:
                 results.append(
@@ -69,14 +81,20 @@ class ScoreEngine:
                 continue
 
             try:
+                relative_metric = relative_metrics.get(
+                    analysis_result.analysis.code,
+                    _RelativeStrengthMetric(
+                        score=50,
+                        reason="Relative strength data is unavailable",
+                    ),
+                )
                 results.append(
                     ScoreCalculationResult(
                         position=analysis_result.position,
                         score=self.score(
                             analysis_result.analysis,
-                            relative_strength_score=relative_scores.get(
-                                analysis_result.analysis.code, 50
-                            ),
+                            relative_strength_score=relative_metric.score,
+                            relative_strength_reason=relative_metric.reason,
                         ),
                     )
                 )
@@ -143,14 +161,14 @@ class ScoreEngine:
         )
 
     def _relative_strength_component(
-        self, relative_strength_score: int
+        self, relative_strength_score: int, reason: str
     ) -> ScoreComponent:
         ratio = max(0.0, min(1.0, relative_strength_score / 100))
         return _component(
             name="Relative Strength",
             weight=self._settings.relative_strength_weight,
             ratio=ratio,
-            reason=f"Relative strength score is {relative_strength_score}",
+            reason=reason,
         )
 
     def _confidence(self, analysis: AnalysisResult) -> float:
@@ -173,20 +191,23 @@ def _has_reason(analysis: AnalysisResult, needle: str) -> bool:
 
 
 def _rating_for_score(score: int) -> str:
-    if score >= 85:
-        return "★★★★★"
-    if score >= 70:
-        return "★★★★☆"
-    if score >= 55:
-        return "★★★☆☆"
-    if score >= 40:
-        return "★★☆☆☆"
+    ratings = (
+        (95, "★★★★★"),
+        (90, "★★★★☆"),
+        (80, "★★★★"),
+        (70, "★★★★☆"),
+        (60, "★★★☆☆"),
+        (50, "★★☆☆☆"),
+    )
+    for threshold, rating in ratings:
+        if score >= threshold:
+            return rating
     return "★☆☆☆☆"
 
 
-def _relative_strength_scores(
+def _relative_strength_metrics(
     analysis_results: tuple[AnalysisCalculationResult, ...],
-) -> dict[str, int]:
+) -> dict[str, _RelativeStrengthMetric]:
     analyses = [
         result.analysis
         for result in analysis_results
@@ -197,15 +218,28 @@ def _relative_strength_scores(
 
     market_return = sum(item.stock_return or 0 for item in analyses) / len(analyses)
     sector_returns = _sector_returns(analyses)
-    scores: dict[str, int] = {}
+    portfolio_ranks = _portfolio_ranks(analyses)
+    sector_ranks = _sector_ranks(analyses)
+    metrics: dict[str, _RelativeStrengthMetric] = {}
     for analysis in analyses:
         stock_return = analysis.stock_return or 0
         sector_return = sector_returns.get(analysis.sector, market_return)
         sector_delta = stock_return - sector_return
         market_delta = stock_return - market_return
-        raw_score = 50 + (sector_delta * 500) + (market_delta * 500)
-        scores[analysis.code] = round(max(0, min(100, raw_score)))
-    return scores
+        rank_score = _rank_score(portfolio_ranks[analysis.code], len(analyses))
+        raw_score = (rank_score * 0.6) + 50 + (sector_delta * 300) + (
+            market_delta * 300
+        )
+        portfolio_rank = portfolio_ranks[analysis.code]
+        sector_rank, sector_total = sector_ranks[analysis.code]
+        metrics[analysis.code] = _RelativeStrengthMetric(
+            score=round(max(0, min(100, raw_score))),
+            reason=(
+                f"Relative strength rank {portfolio_rank} of {len(analyses)}; "
+                f"sector rank {sector_rank} of {sector_total}"
+            ),
+        )
+    return metrics
 
 
 def _sector_returns(analyses: list[AnalysisResult]) -> dict[str, float]:
@@ -217,3 +251,36 @@ def _sector_returns(analyses: list[AnalysisResult]) -> dict[str, float]:
         for sector, values in grouped.items()
         if values
     }
+
+
+def _portfolio_ranks(analyses: list[AnalysisResult]) -> dict[str, int]:
+    ranked = sorted(
+        analyses,
+        key=lambda analysis: analysis.stock_return or 0,
+        reverse=True,
+    )
+    return {analysis.code: index for index, analysis in enumerate(ranked, start=1)}
+
+
+def _sector_ranks(analyses: list[AnalysisResult]) -> dict[str, tuple[int, int]]:
+    grouped: dict[str, list[AnalysisResult]] = {}
+    for analysis in analyses:
+        grouped.setdefault(analysis.sector, []).append(analysis)
+
+    ranks: dict[str, tuple[int, int]] = {}
+    for sector_analyses in grouped.values():
+        ranked = sorted(
+            sector_analyses,
+            key=lambda analysis: analysis.stock_return or 0,
+            reverse=True,
+        )
+        total = len(ranked)
+        for index, analysis in enumerate(ranked, start=1):
+            ranks[analysis.code] = (index, total)
+    return ranks
+
+
+def _rank_score(rank: int, total: int) -> float:
+    if total <= 1:
+        return 50.0
+    return 100.0 * (total - rank) / (total - 1)

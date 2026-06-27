@@ -84,6 +84,7 @@ class ScorerSettings:
     reason_confidence_step: float
     minimum_confidence: float
     maximum_confidence: float
+    maximum_score: int
 
 
 @dataclass(frozen=True)
@@ -124,6 +125,60 @@ class DecisionSettings:
 
 
 @dataclass(frozen=True)
+class PortfolioDecisionSettings:
+    """Configuration for portfolio-level decision support."""
+
+    strong_hold_score_threshold: int
+    hold_score_threshold: int
+    reduce_score_threshold: int
+    exit_score_threshold: int
+    replace_score_threshold: int
+    replacement_min_score_gap: int
+    minimum_confidence: float
+    maximum_confidence: float
+
+
+@dataclass(frozen=True)
+class MarketSessionSettings:
+    """Configuration for market-session-aware report behavior."""
+
+    analysis_cutoff_time: str
+
+
+@dataclass(frozen=True)
+class TelegramSettings:
+    """Configuration for Telegram notification delivery."""
+
+    enabled: bool
+    bot_token_env: str
+    chat_id_env: str
+
+
+@dataclass(frozen=True)
+class EmailSettings:
+    """Configuration for email report delivery."""
+
+    enabled: bool
+    smtp_host: str
+    smtp_port: int
+    username_env: str
+    password_env: str
+    sender_env: str
+    recipients: tuple[str, ...]
+    use_tls: bool
+
+
+@dataclass(frozen=True)
+class NotificationSettings:
+    """Configuration for report notification delivery."""
+
+    enabled: bool
+    dry_run: bool
+    telegram: TelegramSettings
+    email: EmailSettings
+
+
+@dataclass(frozen=True)
 class AppSettings:
     """Application-level configuration."""
 
@@ -135,6 +190,9 @@ class AppSettings:
     summary: SummarySettings
     scanner: ScannerSettings
     decision: DecisionSettings
+    portfolio_decision: PortfolioDecisionSettings
+    market_session: MarketSessionSettings
+    notification: NotificationSettings
     log_level: str
 
 
@@ -286,6 +344,7 @@ class DailySummary:
     weakest_stock: str | None
     today_risk: str
     tomorrow_watchlist: tuple[str, ...]
+    operation_advice: str
     conclusion: str
     reasons: tuple[str, ...]
 
@@ -333,6 +392,81 @@ class DecisionCalculationResult:
 
 
 @dataclass(frozen=True)
+class ReplacementSuggestion:
+    """A suggested candidate to replace a weak portfolio holding."""
+
+    current_code: str
+    current_name: str
+    suggested_code: str
+    suggested_name: str
+    confidence: float
+    score_gap: int
+    trend_improvement: int
+    relative_strength_improvement: int
+    risk_improvement: int
+    expected_portfolio_score_delta: int
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PortfolioAction:
+    """Portfolio-aware action for one current holding."""
+
+    code: str
+    name: str
+    action: str
+    confidence: float
+    risk: str
+    score: int
+    rank: int
+    relative_rank: int
+    risk_rank: int
+    trend_rank: int
+    total_positions: int
+    relative_strength_score: int
+    replacement: ReplacementSuggestion | None
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PortfolioDecisionPlan:
+    """Portfolio-level plan answering what to do tomorrow."""
+
+    actions: tuple[PortfolioAction, ...]
+    replacements: tuple[ReplacementSuggestion, ...]
+    portfolio_score: float
+    portfolio_risk_score: float
+    summary: str
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AnalysisDataSnapshot:
+    """Metadata describing which market data snapshot analysis used."""
+
+    data_date: str | None
+    is_using_previous_close: bool
+    advice_horizon: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class NotificationResult:
+    """Result of attempting to deliver one notification channel."""
+
+    channel: str
+    sent: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class NotificationDispatchResult:
+    """Results for all notification channels attempted by a dispatcher."""
+
+    results: tuple[NotificationResult, ...]
+
+
+@dataclass(frozen=True)
 class PortfolioAnalysis:
     """Portfolio-level exposure and risk analysis."""
 
@@ -344,3 +478,5 @@ class PortfolioAnalysis:
     weakest_relative_position: str | None
     portfolio_trend_score: float
     portfolio_risk_score: float
+    portfolio_risk_level: str
+    portfolio_risk_reasons: tuple[str, ...]

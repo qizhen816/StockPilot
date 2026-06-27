@@ -79,14 +79,47 @@ v0.8
 
 v0.9
 
-* [ ] Streamlit Dashboard
-* [ ] Charts
-* [ ] Portfolio Page
+* [x] Streamlit Dashboard
+* [x] Charts
+* [x] Portfolio Page
 
 ⸻
 
 v1.0
 
-* Telegram Notification
-* Email Report
-* Release 1.0
+* [x] Telegram Notification
+* [x] Email Report
+* [x] Release 1.0
+
+⸻
+
+v1.1
+
+* [x] Portfolio Decision Engine
+* [x] Dynamic Decision Confidence
+* [x] Replacement Suggestions
+* [x] Dashboard Plan View
+* [x] README Usage Guide
+
+⸻
+
+v1.2
+
+* [x] Relative Strength Ranking
+* [x] Chinese Analysis Reasons
+* [x] Pre-close Previous Close Analysis
+* [x] Today Operation Advice
+* [x] Market Session Tests
+
+⸻
+
+v1.2.1
+
+* [x] Score Normalization
+* [x] Confidence Calibration
+* [x] Existing Position Actions
+* [x] Sector Classification
+* [x] Portfolio Risk Explanation
+* [x] Replacement Improvement Breakdown
+* [x] Portfolio Ranking Details
+* [x] Rule-Based Summary Polish

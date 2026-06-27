@@ -138,6 +138,9 @@ System Overview
                Fetcher (AKShare)
                      │
                      ▼
+          Market Session Selector
+                     │
+                     ▼
                OHLCV DataFrame
                      │
                      ▼
@@ -157,12 +160,21 @@ System Overview
                      │
                      ▼
                 StockScore
+                    │
+                    ▼
+          Portfolio Decision Engine
                      │
                      ▼
                  Reporter
                      │
                      ▼
         Console / Markdown / CSV
+                     │
+                     ▼
+              Notification
+                     │
+                     ▼
+              Telegram / Email
 
 ⸻
 
@@ -186,6 +198,24 @@ Must NOT
 
 * calculate indicators
 * generate reports
+
+⸻
+
+market_session.py
+
+Responsibility
+
+Select the correct market data snapshot for analysis.
+
+Before the configured cutoff time, analysis should use the previous completed
+daily close. Valuation may still use the latest available data.
+
+Must NOT
+
+* download data
+* calculate indicators
+* generate scores
+* render reports
 
 ⸻
 
@@ -276,7 +306,9 @@ StockScore
 
 Range
 
-0~100
+0~95
+
+The score should never reach 100 because markets do not offer perfect certainty.
 
 Weight
 
@@ -297,13 +329,59 @@ All weights should be configurable.
 
 ⸻
 
+portfolio_decision.py
+
+Input
+
+StockScore
+
+AnalysisResult
+
+PortfolioAnalysis
+
+ScannerResult
+
+Output
+
+PortfolioDecisionPlan
+
+Responsibilities
+
+Generate portfolio-aware actions.
+
+Examples
+
+Strong Hold
+Hold
+Reduce Position
+Replace Candidate
+Exit
+Watch
+
+Must include
+
+Reason
+
+Confidence
+
+Risk
+
+Must NOT
+
+* download data
+* calculate indicators
+* generate raw scores
+* mutate portfolio configuration
+
+⸻
+
 strategy.py
 
 Generate trading suggestions.
 
 Example
 
-Continue Hold
+Strong Hold
 Reduce Position
 Watch
 Potential Breakout
@@ -330,6 +408,29 @@ Future
 HTML
 
 No calculations here.
+
+⸻
+
+notification.py
+
+Deliver generated reports through external channels.
+
+Input
+
+DailyReportPayload
+
+Markdown report path
+
+Output
+
+NotificationDispatchResult
+
+Must NOT
+
+* calculate indicators
+* score stocks
+* alter decisions
+* fetch market data
 
 ⸻
 
@@ -594,10 +695,6 @@ LLM-generated natural language report.
 dashboard.py
 
 Streamlit dashboard.
-
-notification.py
-
-Telegram / Email notifications.
 
 ⸻
 

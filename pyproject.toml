@@ -1,6 +1,6 @@
 [project]
 name = "stock-pilot"
-version = "0.1.0"
+version = "1.2.1"
 description = "Explainable AI-powered trading assistant for the Chinese A-share market."
 requires-python = ">=3.12"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
   "PyYAML>=6.0",
   "rich>=14.0",
   "matplotlib>=3.10",
+  "streamlit>=1.37",
 ]
 
 [tool.ruff]
