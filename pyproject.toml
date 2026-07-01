@@ -1,6 +1,6 @@
 [project]
 name = "stock-pilot"
-version = "1.2.1"
+version = "1.3.1"
 description = "Explainable AI-powered trading assistant for the Chinese A-share market."
 requires-python = ">=3.12"
 dependencies = [

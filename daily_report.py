@@ -37,6 +37,7 @@ def main() -> None:
     reporter.render_indicator_results(payload.indicator_results)
     reporter.render_analysis_results(payload.analysis_results)
     reporter.render_score_results(payload.score_results)
+    reporter.render_position_recommendations(payload.position_recommendations)
     reporter.render_scanner_result(payload.scanner_result)
     reporter.render_decision_results(payload.decision_results)
     reporter.render_summary(payload.summary)

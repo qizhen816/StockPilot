@@ -291,6 +291,9 @@ class PortfolioAnalyzer:
                 portfolio_risk_score=0.0,
                 portfolio_risk_level="Unknown",
                 portfolio_risk_reasons=("Portfolio valuation is unavailable",),
+                profit_concentration_pct=0.0,
+                profit_concentration_score=0.0,
+                profit_concentration_reasons=("Portfolio valuation is unavailable",),
             )
 
         valuation = valuation_result.valuation
@@ -304,6 +307,7 @@ class PortfolioAnalyzer:
             valuation=valuation,
             score_results=score_results,
         )
+        profit_concentration = _profit_concentration(valuation)
         return PortfolioAnalysis(
             sector_exposures=_sector_exposures(valuation),
             concentration_top_position_pct=_top_concentration(valuation),
@@ -315,6 +319,12 @@ class PortfolioAnalyzer:
             portfolio_risk_score=risk_score,
             portfolio_risk_level=_portfolio_risk_level(risk_score),
             portfolio_risk_reasons=risk_reasons,
+            profit_concentration_pct=profit_concentration,
+            profit_concentration_score=profit_concentration * 100,
+            profit_concentration_reasons=_profit_concentration_reasons(
+                valuation,
+                profit_concentration,
+            ),
         )
 
 
@@ -430,3 +440,49 @@ def _portfolio_risk_reasons(
     if not reasons:
         reasons.append("Portfolio risk is balanced across current holdings")
     return tuple(reasons)
+
+
+def _profit_concentration(valuation: PortfolioValuation) -> float:
+    profitable = [
+        position for position in valuation.positions if position.unrealized_pnl > 0
+    ]
+    total_profit = sum(position.unrealized_pnl for position in profitable)
+    if total_profit <= 0:
+        return 0.0
+    top_two_profit = sum(
+        position.unrealized_pnl
+        for position in sorted(
+            profitable,
+            key=lambda item: item.unrealized_pnl,
+            reverse=True,
+        )[:2]
+    )
+    return top_two_profit / total_profit
+
+
+def _profit_concentration_reasons(
+    valuation: PortfolioValuation,
+    concentration: float,
+) -> tuple[str, ...]:
+    profitable = sorted(
+        [position for position in valuation.positions if position.unrealized_pnl > 0],
+        key=lambda item: item.unrealized_pnl,
+        reverse=True,
+    )
+    if not profitable:
+        return ("No profitable positions are available",)
+    leaders = "、".join(position.name for position in profitable[:2])
+    if concentration >= 0.75:
+        return (
+            f"Profit concentration is high at {concentration:.0%}",
+            f"Most portfolio profit comes from {leaders}",
+        )
+    if concentration >= 0.55:
+        return (
+            f"Profit concentration is medium at {concentration:.0%}",
+            f"Main profit contributors are {leaders}",
+        )
+    return (
+        f"Profit concentration is balanced at {concentration:.0%}",
+        f"Main profit contributors are {leaders}",
+    )

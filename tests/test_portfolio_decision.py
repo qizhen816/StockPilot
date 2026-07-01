@@ -37,6 +37,8 @@ def test_portfolio_decision_strong_holds_top_holding() -> None:
     assert plan.actions[0].relative_rank == 1
     assert plan.actions[0].risk_rank == 1
     assert plan.actions[0].trend_rank == 1
+    assert plan.actions[0].execution_priority == "This Week"
+    assert plan.actions[0].risk_breakdown.trend_risk == "Low"
 
 
 def test_portfolio_decision_recommends_replacement_for_weak_holding() -> None:
@@ -70,6 +72,7 @@ def test_portfolio_decision_recommends_replacement_for_weak_holding() -> None:
     assert plan.actions[0].replacement.suggested_code == "300088"
     assert plan.replacements[0].score_gap == 20
     assert plan.replacements[0].expected_portfolio_score_delta == 20
+    assert plan.replacements[0].replacement_confidence >= 0.68
 
 
 def _settings() -> PortfolioDecisionSettings:
@@ -82,6 +85,8 @@ def _settings() -> PortfolioDecisionSettings:
         replacement_min_score_gap=12,
         minimum_confidence=0.55,
         maximum_confidence=0.90,
+        replacement_min_confidence=0.68,
+        replacement_switch_cost_penalty=0.08,
     )
 
 
@@ -117,4 +122,7 @@ def _portfolio_analysis() -> PortfolioAnalysis:
         portfolio_risk_score=40.0,
         portfolio_risk_level="Medium",
         portfolio_risk_reasons=("Largest position concentration is 100%",),
+        profit_concentration_pct=1.0,
+        profit_concentration_score=100.0,
+        profit_concentration_reasons=("Profit concentration is high at 100%",),
     )

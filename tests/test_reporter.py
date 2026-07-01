@@ -19,7 +19,9 @@ from stock_pilot.models import (
     PortfolioValuation,
     PortfolioValuationResult,
     Position,
+    PositionRecommendation,
     PositionValuation,
+    RiskBreakdown,
     ScanCandidate,
     ScannerResult,
     ScoreCalculationResult,
@@ -40,7 +42,9 @@ def test_markdown_reporter_writes_chinese_daily_report(tmp_path: Path) -> None:
     assert "# StockPilot 日报 2026-06-25" in content
     assert "## 分析口径" in content
     assert "## 明日组合计划" in content
+    assert "## 组合仓位建议" in content
     assert "强势持有" in content
+    assert "部分止盈" in content
     assert "兴森科技（002436）" in content
     assert "趋势偏多" in content
     assert "收盘价位于 MA20 上方" in content
@@ -138,6 +142,12 @@ def _payload() -> DailyReportPayload:
             portfolio_risk_reasons=(
                 "Portfolio risk is balanced across current holdings",
             ),
+            profit_concentration_pct=1.0,
+            profit_concentration_score=100.0,
+            profit_concentration_reasons=(
+                "Profit concentration is high at 100%",
+                "Most portfolio profit comes from 兴森科技",
+            ),
         ),
         portfolio_decision_plan=PortfolioDecisionPlan(
             actions=(
@@ -147,6 +157,12 @@ def _payload() -> DailyReportPayload:
                     action="Strong Hold",
                     confidence=0.88,
                     risk="Low",
+                    risk_breakdown=RiskBreakdown(
+                        volatility_risk="Low",
+                        trend_risk="Low",
+                        concentration_risk="High",
+                        portfolio_risk="Low",
+                    ),
                     score=95,
                     rank=1,
                     relative_rank=1,
@@ -154,6 +170,7 @@ def _payload() -> DailyReportPayload:
                     trend_rank=1,
                     total_positions=1,
                     relative_strength_score=50,
+                    execution_priority="This Week",
                     replacement=None,
                     reasons=(
                         "Portfolio rank 1 of 1",
@@ -169,6 +186,38 @@ def _payload() -> DailyReportPayload:
             reasons=(
                 "Portfolio trend score is 95.00",
                 "Portfolio risk score is 25.00",
+            ),
+        ),
+        position_recommendations=(
+            PositionRecommendation(
+                code="002436",
+                name="兴森科技",
+                current_shares=100,
+                recommended_shares=75,
+                current_position_pct=1.0,
+                recommended_position_pct=0.75,
+                state="ACCUMULATE",
+                trend_stage="LATE_UPTREND",
+                action="Take Partial Profit",
+                confidence=0.86,
+                risk="Low",
+                risk_breakdown=RiskBreakdown(
+                    volatility_risk="Low",
+                    trend_risk="Low",
+                    concentration_risk="High",
+                    portfolio_risk="Low",
+                ),
+                cost_price=10.0,
+                current_price=12.0,
+                unrealized_pnl_pct=0.2,
+                current_drawdown_pct=-0.01,
+                suggested_stop_loss=10.5,
+                suggested_trailing_stop=10.8,
+                suggested_take_profit=12.5,
+                reasons=(
+                    "Close is near resistance",
+                    "Protect existing profits while trend remains healthy",
+                ),
             ),
         ),
         indicator_results=(),

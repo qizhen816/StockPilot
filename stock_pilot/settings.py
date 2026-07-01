@@ -18,6 +18,7 @@ from stock_pilot.models import (
     MarketSessionSettings,
     NotificationSettings,
     PortfolioDecisionSettings,
+    PositionManagerSettings,
     ReportSettings,
     ScannerSettings,
     ScorerSettings,
@@ -83,6 +84,12 @@ class SettingsLoader:
         if not isinstance(portfolio_decision_settings, dict):
             raise SettingsError(
                 "settings.yaml must contain a 'portfolio_decision' mapping"
+            )
+
+        position_manager_settings = raw_settings.get("position_manager")
+        if not isinstance(position_manager_settings, dict):
+            raise SettingsError(
+                "settings.yaml must contain a 'position_manager' mapping"
             )
 
         market_session_settings = raw_settings.get("market_session")
@@ -267,6 +274,19 @@ class SettingsLoader:
                     "maximum_confidence",
                     "portfolio_decision",
                 ),
+                replacement_min_confidence=_required_number(
+                    portfolio_decision_settings,
+                    "replacement_min_confidence",
+                    "portfolio_decision",
+                ),
+                replacement_switch_cost_penalty=_required_number(
+                    portfolio_decision_settings,
+                    "replacement_switch_cost_penalty",
+                    "portfolio_decision",
+                ),
+            ),
+            position_manager=_build_position_manager_settings(
+                position_manager_settings
             ),
             market_session=MarketSessionSettings(
                 analysis_cutoff_time=_required_time_string(
@@ -356,6 +376,17 @@ def _required_number(mapping: dict[str, Any], key: str, section: str) -> float:
     return float(value)
 
 
+def _required_number_tuple(
+    mapping: dict[str, Any], key: str, section: str
+) -> tuple[float, ...]:
+    value = mapping.get(key)
+    if not isinstance(value, list) or not value:
+        raise SettingsError(f"{section}.{key} must be a non-empty number list")
+    if not all(isinstance(item, int | float) for item in value):
+        raise SettingsError(f"{section}.{key} must contain numbers")
+    return tuple(float(item) for item in value)
+
+
 def _required_bool(mapping: dict[str, Any], key: str, section: str) -> bool:
     value = mapping.get(key)
     if not isinstance(value, bool):
@@ -426,6 +457,11 @@ def _optional_string_list(mapping: dict[str, Any], key: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value)
 
 
+def _require_ratio_range(value: float, name: str) -> None:
+    if not 0 <= value <= 1:
+        raise SettingsError(f"{name} must be between 0 and 1")
+
+
 def _build_scorer_settings(raw_settings: dict[str, Any]) -> ScorerSettings:
     settings = ScorerSettings(
         trend_weight=_required_positive_int(raw_settings, "trend_weight", "scorer"),
@@ -447,6 +483,18 @@ def _build_scorer_settings(raw_settings: dict[str, Any]) -> ScorerSettings:
             raw_settings, "maximum_confidence", "scorer"
         ),
         maximum_score=_required_positive_int(raw_settings, "maximum_score", "scorer"),
+        relative_strength_5d_weight=_required_number(
+            raw_settings, "relative_strength_5d_weight", "scorer"
+        ),
+        relative_strength_20d_weight=_required_number(
+            raw_settings, "relative_strength_20d_weight", "scorer"
+        ),
+        relative_strength_60d_weight=_required_number(
+            raw_settings, "relative_strength_60d_weight", "scorer"
+        ),
+        long_term_trend_penalty=_required_positive_int(
+            raw_settings, "long_term_trend_penalty", "scorer"
+        ),
     )
     total_weight = (
         settings.trend_weight
@@ -457,6 +505,82 @@ def _build_scorer_settings(raw_settings: dict[str, Any]) -> ScorerSettings:
     )
     if total_weight != 100:
         raise SettingsError("scorer weights must sum to 100")
+    relative_weight = (
+        settings.relative_strength_5d_weight
+        + settings.relative_strength_20d_weight
+        + settings.relative_strength_60d_weight
+    )
+    if round(relative_weight, 6) != 1:
+        raise SettingsError("relative strength weights must sum to 1")
+    return settings
+
+
+def _build_position_manager_settings(
+    raw_settings: dict[str, Any],
+) -> PositionManagerSettings:
+    settings = PositionManagerSettings(
+        full_position_pct=_required_number(
+            raw_settings, "full_position_pct", "position_manager"
+        ),
+        overweight_position_pct=_required_number(
+            raw_settings, "overweight_position_pct", "position_manager"
+        ),
+        accumulate_position_pct=_required_number(
+            raw_settings, "accumulate_position_pct", "position_manager"
+        ),
+        normal_position_pct=_required_number(
+            raw_settings, "normal_position_pct", "position_manager"
+        ),
+        lighten_position_pct=_required_number(
+            raw_settings, "lighten_position_pct", "position_manager"
+        ),
+        exit_position_pct=_required_number(
+            raw_settings, "exit_position_pct", "position_manager"
+        ),
+        near_resistance_pct=_required_number(
+            raw_settings, "near_resistance_pct", "position_manager"
+        ),
+        wide_resistance_pct=_required_number(
+            raw_settings, "wide_resistance_pct", "position_manager"
+        ),
+        profit_protection_levels=_required_number_tuple(
+            raw_settings, "profit_protection_levels", "position_manager"
+        ),
+        atr_stop_multiplier=_required_number(
+            raw_settings, "atr_stop_multiplier", "position_manager"
+        ),
+        sector_concentration_threshold=_required_number(
+            raw_settings, "sector_concentration_threshold", "position_manager"
+        ),
+        position_concentration_threshold=_required_number(
+            raw_settings, "position_concentration_threshold", "position_manager"
+        ),
+        minimum_confidence=_required_number(
+            raw_settings, "minimum_confidence", "position_manager"
+        ),
+        maximum_confidence=_required_number(
+            raw_settings, "maximum_confidence", "position_manager"
+        ),
+        pullback_position_pct=_required_number(
+            raw_settings, "pullback_position_pct", "position_manager"
+        ),
+        late_uptrend_position_pct=_required_number(
+            raw_settings, "late_uptrend_position_pct", "position_manager"
+        ),
+        breakdown_position_pct=_required_number(
+            raw_settings, "breakdown_position_pct", "position_manager"
+        ),
+    )
+    _require_ratio_range(
+        settings.minimum_confidence, "position_manager.minimum_confidence"
+    )
+    _require_ratio_range(
+        settings.maximum_confidence, "position_manager.maximum_confidence"
+    )
+    if settings.minimum_confidence > settings.maximum_confidence:
+        raise SettingsError(
+            "position_manager.minimum_confidence must be <= maximum_confidence"
+        )
     return settings
 
 

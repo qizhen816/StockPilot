@@ -106,7 +106,7 @@ streamlit run dashboard.py
 Dashboard 当前包含：
 
 - **组合**：持仓估值、行业暴露、集中度、组合趋势分、组合风险分
-- **计划**：明日组合动作、动作原因、置信度、替换候选
+- **计划**：明日组合动作、仓位建议、动作原因、置信度、替换候选
 - **评分**：个股分数、风险、相对强弱、个股决策
 - **候选**：scanner 选出的候选列表
 - **图表**：评分分布和持仓市值
@@ -203,6 +203,59 @@ v1.2 polish 后，评分最高封顶为 95，置信度最高封顶为 90%。Stoc
 
 ---
 
+## v1.3 Position Management Engine
+
+v1.3 增加了独立的仓位管理引擎。它回答的不是“这只股票强不强”，而是：
+
+```text
+这只已经持有的股票，明天应该保留多少仓位？
+```
+
+仓位建议会综合：
+
+- 当前持股数量
+- 成本价和现价
+- 浮动盈亏
+- 趋势、动量、风险
+- 距离压力位的空间
+- ATR 止损和跟踪止损
+- 组合集中度和行业暴露
+
+输出示例：
+
+```text
+兴森科技
+当前：100 股
+建议：75 股
+动作：部分止盈
+原因：
+- 价格接近压力位
+- 趋势仍健康，但需要保护已有利润
+- 现金管理实现前不建议额外加仓
+```
+
+仓位状态包括：
+
+- `FULL`：保留当前仓位
+- `ACCUMULATE`：保留核心仓，适合部分止盈
+- `NORMAL`：标准仓
+- `LIGHTEN`：轻仓防守
+- `EXIT`：退出持仓
+
+当前版本不会主动建议额外买入，因为系统还没有现金管理、最大仓位和风险预算模块。强势品种会优先给出“继续持有”或“保留核心仓”，避免在没有资金约束的情况下给出过度进攻建议。
+
+v1.3.1 对决策质量做了进一步打磨：
+
+- 仓位管理新增趋势阶段：上升初期、上升中段、上升后段、趋势内回调、趋势破位
+- 趋势内回调不会被直接当成破位处理，只有 BREAKDOWN 才会重减仓
+- 相对强弱改为 5 日、20 日、60 日加权，减少单日涨跌噪音
+- 个股评分加入长期趋势惩罚，避免 MA60 下方的反弹被过度高估
+- 替换建议加入替换置信度和换仓成本，分数高不再自动等于应该替换
+- 决策动作加入执行优先级：立即、今日、本周、观察、未来
+- 风险拆分为波动风险、趋势风险、集中度风险和组合风险
+
+---
+
 ## Configuration
 
 主要配置文件：
@@ -248,6 +301,28 @@ portfolio_decision:
 ```
 
 这些值决定什么时候强势持有、持有、观察、减仓、退出或寻找替换候选。
+
+### Position Management
+
+仓位管理阈值在 `config/settings.yaml`：
+
+```yaml
+position_manager:
+  full_position_pct: 1.0
+  accumulate_position_pct: 0.75
+  normal_position_pct: 0.50
+  lighten_position_pct: 0.25
+  exit_position_pct: 0.0
+  near_resistance_pct: 0.03
+  wide_resistance_pct: 0.08
+  profit_protection_levels: [0.05, 0.10, 0.15, 0.20]
+  atr_stop_multiplier: 2.0
+  pullback_position_pct: 1.0
+  late_uptrend_position_pct: 0.75
+  breakdown_position_pct: 0.25
+```
+
+这些值决定“接近压力位”“盈利保护”“ATR 止损”等仓位管理规则。
 
 ### Market Session
 
@@ -297,6 +372,7 @@ stock-pilot/
 │   ├── pipeline.py
 │   ├── portfolio.py
 │   ├── portfolio_decision.py
+│   ├── position_manager.py
 │   ├── reporter.py
 │   ├── scanner.py
 │   ├── scorer.py

@@ -85,6 +85,10 @@ class ScorerSettings:
     minimum_confidence: float
     maximum_confidence: float
     maximum_score: int
+    relative_strength_5d_weight: float
+    relative_strength_20d_weight: float
+    relative_strength_60d_weight: float
+    long_term_trend_penalty: int
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,31 @@ class PortfolioDecisionSettings:
     replacement_min_score_gap: int
     minimum_confidence: float
     maximum_confidence: float
+    replacement_min_confidence: float
+    replacement_switch_cost_penalty: float
+
+
+@dataclass(frozen=True)
+class PositionManagerSettings:
+    """Configuration for position-size recommendations."""
+
+    full_position_pct: float
+    overweight_position_pct: float
+    accumulate_position_pct: float
+    normal_position_pct: float
+    lighten_position_pct: float
+    exit_position_pct: float
+    near_resistance_pct: float
+    wide_resistance_pct: float
+    profit_protection_levels: tuple[float, ...]
+    atr_stop_multiplier: float
+    sector_concentration_threshold: float
+    position_concentration_threshold: float
+    minimum_confidence: float
+    maximum_confidence: float
+    pullback_position_pct: float
+    late_uptrend_position_pct: float
+    breakdown_position_pct: float
 
 
 @dataclass(frozen=True)
@@ -191,6 +220,7 @@ class AppSettings:
     scanner: ScannerSettings
     decision: DecisionSettings
     portfolio_decision: PortfolioDecisionSettings
+    position_manager: PositionManagerSettings
     market_session: MarketSessionSettings
     notification: NotificationSettings
     log_level: str
@@ -285,6 +315,10 @@ class AnalysisResult:
     reasons: tuple[str, ...]
     sector: str = "未分类"
     stock_return: float | None = None
+    return_5d: float | None = None
+    return_20d: float | None = None
+    return_60d: float | None = None
+    long_term_distance_pct: float | None = None
     volume_status: str = "Unknown"
     volume_reason: str = ""
     primary_support: float | None = None
@@ -405,7 +439,18 @@ class ReplacementSuggestion:
     relative_strength_improvement: int
     risk_improvement: int
     expected_portfolio_score_delta: int
+    replacement_confidence: float
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RiskBreakdown:
+    """Separate risk dimensions used by portfolio decisions."""
+
+    volatility_risk: str
+    trend_risk: str
+    concentration_risk: str
+    portfolio_risk: str
 
 
 @dataclass(frozen=True)
@@ -417,6 +462,7 @@ class PortfolioAction:
     action: str
     confidence: float
     risk: str
+    risk_breakdown: RiskBreakdown
     score: int
     rank: int
     relative_rank: int
@@ -424,6 +470,7 @@ class PortfolioAction:
     trend_rank: int
     total_positions: int
     relative_strength_score: int
+    execution_priority: str
     replacement: ReplacementSuggestion | None
     reasons: tuple[str, ...]
 
@@ -437,6 +484,32 @@ class PortfolioDecisionPlan:
     portfolio_score: float
     portfolio_risk_score: float
     summary: str
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PositionRecommendation:
+    """Portfolio-aware position-size recommendation for one holding."""
+
+    code: str
+    name: str
+    current_shares: int
+    recommended_shares: int
+    current_position_pct: float
+    recommended_position_pct: float
+    state: str
+    trend_stage: str
+    action: str
+    confidence: float
+    risk: str
+    risk_breakdown: RiskBreakdown
+    cost_price: float
+    current_price: float
+    unrealized_pnl_pct: float
+    current_drawdown_pct: float
+    suggested_stop_loss: float | None
+    suggested_trailing_stop: float | None
+    suggested_take_profit: float | None
     reasons: tuple[str, ...]
 
 
@@ -480,3 +553,6 @@ class PortfolioAnalysis:
     portfolio_risk_score: float
     portfolio_risk_level: str
     portfolio_risk_reasons: tuple[str, ...]
+    profit_concentration_pct: float
+    profit_concentration_score: float
+    profit_concentration_reasons: tuple[str, ...]

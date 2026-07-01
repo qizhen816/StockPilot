@@ -51,6 +51,10 @@ scorer:
   minimum_confidence: 0.55
   maximum_confidence: 0.90
   maximum_score: 95
+  relative_strength_5d_weight: 0.30
+  relative_strength_20d_weight: 0.40
+  relative_strength_60d_weight: 0.30
+  long_term_trend_penalty: 10
 report:
   output_dir: reports/daily
   history_csv: reports/history.csv
@@ -70,6 +74,26 @@ portfolio_decision:
   replacement_min_score_gap: 12
   minimum_confidence: 0.55
   maximum_confidence: 0.90
+  replacement_min_confidence: 0.68
+  replacement_switch_cost_penalty: 0.08
+position_manager:
+  full_position_pct: 1.0
+  overweight_position_pct: 1.25
+  accumulate_position_pct: 0.75
+  normal_position_pct: 0.50
+  lighten_position_pct: 0.25
+  exit_position_pct: 0.0
+  near_resistance_pct: 0.03
+  wide_resistance_pct: 0.08
+  profit_protection_levels: [0.05, 0.10, 0.15, 0.20]
+  atr_stop_multiplier: 2.0
+  sector_concentration_threshold: 0.60
+  position_concentration_threshold: 0.25
+  minimum_confidence: 0.55
+  maximum_confidence: 0.90
+  pullback_position_pct: 1.0
+  late_uptrend_position_pct: 0.75
+  breakdown_position_pct: 0.25
 market_session:
   analysis_cutoff_time: "15:00"
 notification:
@@ -106,6 +130,8 @@ notification:
     assert settings.scorer.trend_weight == 40
     assert settings.scorer.relative_strength_weight == 10
     assert settings.scorer.maximum_score == 95
+    assert settings.scorer.relative_strength_20d_weight == 0.40
+    assert settings.scorer.long_term_trend_penalty == 10
     assert settings.report.output_dir == Path("reports/daily")
     assert settings.report.history_csv == Path("reports/history.csv")
     assert settings.summary.watchlist_limit == 3
@@ -116,6 +142,16 @@ notification:
     assert settings.portfolio_decision.strong_hold_score_threshold == 85
     assert settings.portfolio_decision.replacement_min_score_gap == 12
     assert settings.portfolio_decision.maximum_confidence == 0.90
+    assert settings.portfolio_decision.replacement_min_confidence == 0.68
+    assert settings.position_manager.accumulate_position_pct == 0.75
+    assert settings.position_manager.profit_protection_levels == (
+        0.05,
+        0.10,
+        0.15,
+        0.20,
+    )
+    assert settings.position_manager.maximum_confidence == 0.90
+    assert settings.position_manager.pullback_position_pct == 1.0
     assert settings.market_session.analysis_cutoff_time == "15:00"
     assert settings.notification.enabled is False
     assert settings.notification.dry_run is True

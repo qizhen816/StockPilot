@@ -43,6 +43,13 @@ class Analyzer:
         reasons.append(volume_reason)
         risk = self._analyze_risk(latest, reasons)
         stock_return = _stock_return(latest, previous)
+        return_5d = _period_return(frame, 5)
+        return_20d = _period_return(frame, 20)
+        return_60d = _period_return(frame, 60)
+        long_term_distance_pct = _long_term_distance_pct(
+            latest,
+            f"ma{self._settings.trend_long_ma_period}",
+        )
         supports = self._support_levels(latest)
         resistances = self._resistance_levels(latest)
 
@@ -62,6 +69,10 @@ class Analyzer:
             reasons=tuple(reasons),
             sector=sector,
             stock_return=stock_return,
+            return_5d=return_5d,
+            return_20d=return_20d,
+            return_60d=return_60d,
+            long_term_distance_pct=long_term_distance_pct,
             volume_status=volume_status,
             volume_reason=volume_reason,
             primary_support=supports[0],
@@ -386,6 +397,24 @@ def _stock_return(latest: pd.Series, previous: pd.Series | None) -> float | None
     if close is None or previous_close is None or previous_close == 0:
         return None
     return (close - previous_close) / previous_close
+
+
+def _period_return(frame: pd.DataFrame, period: int) -> float | None:
+    if len(frame) <= period:
+        return None
+    close = _latest_number(frame.iloc[-1], "close")
+    base_close = _latest_number(frame.iloc[-period - 1], "close")
+    if close is None or base_close is None or base_close == 0:
+        return None
+    return (close - base_close) / base_close
+
+
+def _long_term_distance_pct(latest: pd.Series, long_ma_key: str) -> float | None:
+    close = _latest_number(latest, "close")
+    long_ma = _latest_number(latest, long_ma_key)
+    if close is None or long_ma is None or long_ma == 0:
+        return None
+    return (close - long_ma) / long_ma
 
 
 def _has_long_upper_shadow(

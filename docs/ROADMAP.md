@@ -258,6 +258,47 @@ Refine
 
 ⸻
 
+v1.3 Position Management Engine
+
+Status
+
+Completed
+
+Add dedicated position-size recommendations for existing holdings.
+
+Generate
+
+* Current vs recommended shares
+* Position state
+* Continue Hold / Take Partial Profit / Reduce / Exit / Watch actions
+* Cost-aware profit protection
+* ATR stop, trailing stop, and take-profit reference
+* Portfolio and sector concentration reasons
+* Console, Markdown, and Dashboard rendering
+
+⸻
+
+v1.3.1 Decision Engine Refinement
+
+Status
+
+Completed
+
+Improve swing-trading decision quality without changing module boundaries.
+
+Refine
+
+* Trend Stage based position sizing
+* 5/20/60-day relative strength
+* Long-term trend score penalty
+* Profit concentration analysis
+* Replacement confidence with switch cost
+* Execution priority
+* Risk breakdown
+* Decision-oriented explanations
+
+⸻
+
 Future
 
 Sector Rotation

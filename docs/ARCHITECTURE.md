@@ -165,6 +165,9 @@ System Overview
           Portfolio Decision Engine
                      │
                      ▼
+          Position Management Engine
+                     │
+                     ▼
                  Reporter
                      │
                      ▼
@@ -323,6 +326,14 @@ Risk
 Relative Strength
 10
 
+Relative Strength must measure sustainable leadership.
+
+Use configurable 5-day, 20-day, and 60-day weighted performance plus sector
+and portfolio comparison.
+
+Scorer may apply configurable long-term trend penalties when price remains
+below MA60 or long-term trend context is weak.
+
 Never hardcode random values.
 
 All weights should be configurable.
@@ -349,6 +360,10 @@ Responsibilities
 
 Generate portfolio-aware actions.
 
+Generate execution priority.
+
+Separate volatility, trend, concentration, and portfolio risk.
+
 Examples
 
 Strong Hold
@@ -358,6 +373,14 @@ Replace Candidate
 Exit
 Watch
 
+Execution Priority
+
+Immediate
+Today
+This Week
+Observe
+Future
+
 Must include
 
 Reason
@@ -366,11 +389,75 @@ Confidence
 
 Risk
 
+RiskBreakdown
+
+Execution Priority
+
 Must NOT
 
 * download data
 * calculate indicators
 * generate raw scores
+* mutate portfolio configuration
+
+⸻
+
+position_manager.py
+
+Input
+
+Position
+AnalysisResult
+StockScore
+PortfolioValuation
+PortfolioAnalysis
+IndicatorResult
+
+Output
+
+PositionRecommendation
+
+Responsibilities
+
+Recommend how much of each existing holding to keep.
+
+Use Trend Stage before sizing.
+
+Trend Stage
+
+EARLY_UPTREND
+MID_UPTREND
+LATE_UPTREND
+PULLBACK
+BREAKDOWN
+
+Examples
+
+Continue Hold
+Take Partial Profit
+Reduce Position
+Exit Position
+Watch
+
+Must include
+
+Recommended shares
+Recommended position percentage
+Reason
+Confidence
+Risk
+RiskBreakdown
+Trend Stage
+Suggested ATR stop
+Suggested trailing stop
+Suggested take-profit reference
+
+Must NOT
+
+* download data
+* calculate indicators
+* calculate raw stock scores
+* generate replacement candidates
 * mutate portfolio configuration
 
 ⸻

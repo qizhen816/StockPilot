@@ -123,3 +123,31 @@ v1.2.1
 * [x] Replacement Improvement Breakdown
 * [x] Portfolio Ranking Details
 * [x] Rule-Based Summary Polish
+
+⸻
+
+v1.3
+
+* [x] PositionRecommendation dataclass
+* [x] PositionManager module
+* [x] Cost-aware position sizing
+* [x] Profit protection rules
+* [x] ATR stop and trailing stop references
+* [x] Portfolio concentration awareness
+* [x] Reporter integration
+* [x] Dashboard position table
+* [x] Position manager unit tests
+
+⸻
+
+v1.3.1
+
+* [x] Trend Stage position sizing
+* [x] Multi-period relative strength
+* [x] Long-term trend score penalty
+* [x] Profit concentration analysis
+* [x] Replacement confidence threshold
+* [x] Execution priority
+* [x] Risk breakdown
+* [x] Decision-oriented explanations
+* [x] Documentation updates

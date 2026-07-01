@@ -22,6 +22,7 @@ from stock_pilot.models import (
     PortfolioAnalysis,
     PortfolioDecisionPlan,
     PortfolioValuationResult,
+    PositionRecommendation,
     ScannerResult,
     ScoreCalculationResult,
 )
@@ -37,6 +38,7 @@ class DailyReportPayload:
     portfolio_valuation: PortfolioValuationResult
     portfolio_analysis: PortfolioAnalysis
     portfolio_decision_plan: PortfolioDecisionPlan
+    position_recommendations: tuple[PositionRecommendation, ...]
     indicator_results: tuple[IndicatorCalculationResult, ...]
     analysis_results: tuple[AnalysisCalculationResult, ...]
     score_results: tuple[ScoreCalculationResult, ...]
@@ -220,6 +222,53 @@ class ConsoleReporter:
 
         self._console.print(table)
 
+    def render_position_recommendations(
+        self, recommendations: tuple[PositionRecommendation, ...]
+    ) -> None:
+        """Print portfolio-aware position-size recommendations."""
+        table = Table(title="StockPilot 组合仓位建议")
+        table.add_column("代码", style="cyan")
+        table.add_column("名称")
+        table.add_column("当前股数", justify="right")
+        table.add_column("建议股数", justify="right")
+        table.add_column("建议仓位", justify="right")
+        table.add_column("趋势阶段")
+        table.add_column("动作")
+        table.add_column("风险")
+        table.add_column("置信度", justify="right")
+        table.add_column("止损", justify="right")
+        table.add_column("跟踪止损", justify="right")
+        table.add_column("止盈参考", justify="right")
+        table.add_column("原因")
+
+        if not recommendations:
+            table.add_row(
+                "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"
+            )
+            self._console.print(table)
+            return
+
+        for recommendation in recommendations:
+            table.add_row(
+                recommendation.code,
+                recommendation.name,
+                str(recommendation.current_shares),
+                str(recommendation.recommended_shares),
+                _format_percent(recommendation.recommended_position_pct),
+                _translate_trend_stage(recommendation.trend_stage),
+                _translate_action(recommendation.action),
+                _translate_risk(recommendation.risk),
+                _format_percent(recommendation.confidence),
+                _format_number(recommendation.suggested_stop_loss),
+                _format_number(recommendation.suggested_trailing_stop),
+                _format_number(recommendation.suggested_take_profit),
+                "；".join(
+                    _translate_reason(reason) for reason in recommendation.reasons
+                ),
+            )
+
+        self._console.print(table)
+
     def render_analysis_results(
         self, results: tuple[AnalysisCalculationResult, ...]
     ) -> None:
@@ -339,6 +388,20 @@ class ConsoleReporter:
                 _translate_reason(reason) for reason in analysis.portfolio_risk_reasons
             ),
         )
+        table.add_row(
+            "盈利集中度",
+            (
+                f"{_format_percent(analysis.profit_concentration_pct)}"
+                f"（{_format_number(analysis.profit_concentration_score)}）"
+            ),
+        )
+        table.add_row(
+            "盈利集中原因",
+            "；".join(
+                _translate_reason(reason)
+                for reason in analysis.profit_concentration_reasons
+            ),
+        )
         self._console.print(table)
 
     def render_portfolio_decision_plan(self, plan: PortfolioDecisionPlan) -> None:
@@ -353,12 +416,15 @@ class ConsoleReporter:
         table.add_column("动作")
         table.add_column("分数", justify="right")
         table.add_column("风险")
+        table.add_column("优先级")
         table.add_column("置信度", justify="right")
         table.add_column("替换候选")
         table.add_column("原因")
 
         if not plan.actions:
-            table.add_row("-", "-", "-", "-", "-", "-", "-", "-", plan.summary)
+            table.add_row(
+                "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", plan.summary
+            )
             self._console.print(table)
             return
 
@@ -379,6 +445,7 @@ class ConsoleReporter:
                 _translate_action(action.action),
                 str(action.score),
                 _translate_risk(action.risk),
+                _translate_priority(action.execution_priority),
                 _format_percent(action.confidence),
                 replacement,
                 "；".join(_translate_reason(reason) for reason in action.reasons),
@@ -543,6 +610,10 @@ def _build_markdown(payload: DailyReportPayload) -> str:
         lines.extend(_score_markdown_lines(result))
         lines.append("")
 
+    lines.extend(["## 组合仓位建议", ""])
+    lines.extend(_position_recommendation_markdown_lines(payload.position_recommendations))
+    lines.append("")
+
     lines.extend(["## 个股分析", ""])
     for result in payload.analysis_results:
         lines.extend(_analysis_markdown_lines(result))
@@ -585,10 +656,16 @@ def _portfolio_analysis_markdown_lines(analysis: PortfolioAnalysis) -> list[str]
             f"- 组合风险：{_format_number(analysis.portfolio_risk_score)}"
             f"（{_translate_risk(analysis.portfolio_risk_level)}）"
         ),
+        f"- 盈利集中度：{_format_percent(analysis.profit_concentration_pct)}",
         "- 风险原因：",
         *[
             f"  - {_translate_reason(reason)}"
             for reason in analysis.portfolio_risk_reasons
+        ],
+        "- 盈利集中原因：",
+        *[
+            f"  - {_translate_reason(reason)}"
+            for reason in analysis.profit_concentration_reasons
         ],
     ]
 
@@ -616,6 +693,15 @@ def _portfolio_decision_markdown_lines(plan: PortfolioDecisionPlan) -> list[str]
                 f"    - 趋势排名：{action.trend_rank}/{action.total_positions}",
                 f"    - 分数：{action.score}",
                 f"    - 风险：{_translate_risk(action.risk)}",
+                f"    - 执行优先级：{_translate_priority(action.execution_priority)}",
+                (
+                    "    - 风险拆分："
+                    f"波动 {_translate_risk(action.risk_breakdown.volatility_risk)}，"
+                    f"趋势 {_translate_risk(action.risk_breakdown.trend_risk)}，"
+                    "集中度 "
+                    f"{_translate_risk(action.risk_breakdown.concentration_risk)}，"
+                    f"组合 {_translate_risk(action.risk_breakdown.portfolio_risk)}"
+                ),
                 f"    - 置信度：{_format_percent(action.confidence)}",
                 "    - 原因：",
                 *[
@@ -641,6 +727,10 @@ def _portfolio_decision_markdown_lines(plan: PortfolioDecisionPlan) -> list[str]
                         f"{action.replacement.relative_strength_improvement}"
                     ),
                     f"      - 风险改善：{action.replacement.risk_improvement}",
+                    (
+                        "      - 替换置信度："
+                        f"{_format_percent(action.replacement.replacement_confidence)}"
+                    ),
                     *[
                         f"      - {_translate_reason(reason)}"
                         for reason in action.replacement.reasons
@@ -719,6 +809,57 @@ def _decision_markdown_lines(
                 *[
                     f"    - {_translate_reason(reason)}"
                     for reason in result.decision.reasons
+                ],
+            ]
+        )
+    return lines
+
+
+def _position_recommendation_markdown_lines(
+    recommendations: tuple[PositionRecommendation, ...]
+) -> list[str]:
+    if not recommendations:
+        return ["- 暂无仓位建议。"]
+
+    lines: list[str] = []
+    for recommendation in recommendations:
+        risk_breakdown = recommendation.risk_breakdown
+        lines.extend(
+            [
+                f"- {recommendation.name}（{recommendation.code}）",
+                f"  - 当前股数：{recommendation.current_shares}",
+                f"  - 建议股数：{recommendation.recommended_shares}",
+                (
+                    "  - 建议仓位："
+                    f"{_format_percent(recommendation.recommended_position_pct)}"
+                    f"（{_translate_position_state(recommendation.state)}）"
+                ),
+                f"  - 趋势阶段：{_translate_trend_stage(recommendation.trend_stage)}",
+                f"  - 动作：{_translate_action(recommendation.action)}",
+                f"  - 风险：{_translate_risk(recommendation.risk)}",
+                (
+                    "  - 风险拆分："
+                    f"波动 {_translate_risk(risk_breakdown.volatility_risk)}，"
+                    f"趋势 {_translate_risk(risk_breakdown.trend_risk)}，"
+                    "集中度 "
+                    f"{_translate_risk(risk_breakdown.concentration_risk)}，"
+                    f"组合 {_translate_risk(risk_breakdown.portfolio_risk)}"
+                ),
+                f"  - 置信度：{_format_percent(recommendation.confidence)}",
+                f"  - 成本价：{_format_number(recommendation.cost_price)}",
+                f"  - 现价：{_format_number(recommendation.current_price)}",
+                f"  - 浮盈亏：{_format_percent(recommendation.unrealized_pnl_pct)}",
+                f"  - 当前回撤：{_format_percent(recommendation.current_drawdown_pct)}",
+                f"  - 建议止损：{_format_number(recommendation.suggested_stop_loss)}",
+                (
+                    "  - 建议跟踪止损："
+                    f"{_format_number(recommendation.suggested_trailing_stop)}"
+                ),
+                f"  - 止盈参考：{_format_number(recommendation.suggested_take_profit)}",
+                "  - 原因：",
+                *[
+                    f"    - {_translate_reason(reason)}"
+                    for reason in recommendation.reasons
                 ],
             ]
         )
@@ -829,9 +970,43 @@ def _translate_action(value: str) -> str:
         "Watch": "观察",
         "Replace Candidate": "替换观察",
         "Reduce Position": "降低仓位",
+        "Take Partial Profit": "部分止盈",
         "Take Profit": "止盈",
+        "Exit Position": "退出持仓",
         "Exit": "退出",
         "Avoid Buying": "避免买入",
+    }.get(value, value)
+
+
+def _translate_position_state(value: str) -> str:
+    return {
+        "FULL": "满仓保留",
+        "OVERWEIGHT": "超配",
+        "ACCUMULATE": "保留核心仓",
+        "NORMAL": "标准仓",
+        "LIGHTEN": "轻仓",
+        "EXIT": "清仓",
+    }.get(value, value)
+
+
+def _translate_trend_stage(value: str) -> str:
+    return {
+        "EARLY_UPTREND": "上升初期",
+        "MID_UPTREND": "上升中段",
+        "LATE_UPTREND": "上升后段",
+        "PULLBACK": "趋势内回调",
+        "BREAKDOWN": "趋势破位",
+        "UNKNOWN": "阶段不明",
+    }.get(value, value)
+
+
+def _translate_priority(value: str) -> str:
+    return {
+        "Immediate": "立即",
+        "Today": "今日",
+        "This Week": "本周",
+        "Observe": "观察",
+        "Future": "未来",
     }.get(value, value)
 
 
@@ -928,6 +1103,58 @@ def _translate_reason(reason: str) -> str:
         "Before market close cutoff; using previous completed close": (
             "尚未到收盘判断时间，使用上一完整收盘日数据"
         ),
+        "Analysis or score is unavailable": "分析或评分不可用",
+        "Keep current position until signal quality improves": (
+            "先保持当前仓位，等待信号质量改善"
+        ),
+        "Position is deeply underwater": "持仓浮亏较深",
+        "No averaging down before right-side confirmation": (
+            "没有右侧确认前不建议补仓"
+        ),
+        "Bearish trend with weak momentum and high risk": (
+            "趋势偏空、动量较弱且风险较高"
+        ),
+        "Neutral trend with weak momentum": "趋势中性且动量较弱",
+        "Close is near resistance": "价格接近压力位",
+        "Protect existing profits while trend remains healthy": (
+            "趋势仍健康，但需要保护已有利润"
+        ),
+        "Keep core position because trend remains bullish": (
+            "趋势仍偏多，保留核心仓位"
+        ),
+        "Resistance has enough room": "距离压力位仍有空间",
+        "High risk limits position size": "高风险限制仓位规模",
+        "Signal mix supports keeping current exposure": "信号组合支持维持当前仓位",
+        "No extra buying before cash management is implemented": (
+            "现金管理实现前不建议额外加仓"
+        ),
+        "Long-term trend penalty: below MA60": "长期趋势惩罚：价格仍在 MA60 下方",
+        "Switch cost is included in confidence": "替换置信度已计入换仓成本",
+        "Trend remains intact": "趋势结构仍保持完整",
+        "Trend is consolidating": "趋势处于整理阶段",
+        "Trend has weakened": "趋势已经转弱",
+        "Momentum and volume confirm the move": "动量与量能共同确认当前走势",
+        "Momentum is improving but volume confirmation is limited": (
+            "动量改善，但量能确认不足"
+        ),
+        "Momentum is weak, wait for confirmation": "动量偏弱，等待新的确认信号",
+        "Relative strength remains competitive": "相对强弱仍具备竞争力",
+        "Relative strength is lagging the portfolio": "相对强弱落后于组合",
+        "Risk is elevated, avoid emotional averaging down": (
+            "风险抬升，避免情绪化补仓"
+        ),
+        "Risk remains controlled": "风险仍处于可控状态",
+        "Trend breakdown is confirmed": "趋势破位已经确认",
+        "Current move is a pullback inside the broader trend": (
+            "当前更像大趋势内回调"
+        ),
+        "Hold first and monitor MA20 confirmation": "先持有观察，重点跟踪 MA20 确认",
+        "Uptrend is mature and close to resistance": "上升趋势进入后段并接近压力位",
+        "Protect part of the profit while keeping core exposure": (
+            "保护部分利润，同时保留核心仓位"
+        ),
+        "Risk is elevated but trend is not broken": "风险抬升，但趋势尚未破坏",
+        "No profitable positions are available": "当前没有盈利持仓可用于集中度分析",
     }
     return translations.get(reason, _translate_prefixed_reason(reason))
 
@@ -946,6 +1173,15 @@ def _translate_prefixed_reason(reason: str) -> str:
         ("Trend improvement is ", "趋势改善 "),
         ("Relative strength improvement is ", "相对强弱改善 "),
         ("Risk improvement is ", "风险改善 "),
+        ("Unrealized profit reached ", "浮动盈利达到 "),
+        ("Position concentration is high at ", "单一持仓集中度较高，当前占比 "),
+        ("Replacement confidence is ", "替换置信度 "),
+        ("Trend stage is ", "趋势阶段 "),
+        ("Profit concentration is high at ", "盈利集中度较高，当前占比 "),
+        ("Profit concentration is medium at ", "盈利集中度中等，当前占比 "),
+        ("Profit concentration is balanced at ", "盈利集中度均衡，当前占比 "),
+        ("Most portfolio profit comes from ", "组合大部分盈利来自 "),
+        ("Main profit contributors are ", "主要盈利贡献来自 "),
     )
     for prefix, translated_prefix in prefix_translations:
         if reason.startswith(prefix):
@@ -955,8 +1191,10 @@ def _translate_prefixed_reason(reason: str) -> str:
         _translate_rank_reason,
         _translate_holding_list_reason,
         _translate_sector_exposure_reason,
+        _translate_position_sector_exposure_reason,
         _translate_volume_reason_if_match,
         _translate_relative_strength_reason_if_match,
+        _translate_multi_period_relative_strength_reason,
         _translate_replacement_reason,
     )
     for translator in dynamic_translations:
@@ -998,6 +1236,14 @@ def _translate_sector_exposure_reason(reason: str) -> str | None:
     return f"{sector} 暴露较高，当前占比 {weight}"
 
 
+def _translate_position_sector_exposure_reason(reason: str) -> str | None:
+    marker = " sector exposure is high at "
+    if marker not in reason:
+        return None
+    sector, weight = reason.split(marker, maxsplit=1)
+    return f"{sector} 板块暴露较高，当前占比 {weight}"
+
+
 def _translate_volume_reason_if_match(reason: str) -> str | None:
     if not reason.startswith("Today's volume is "):
         return None
@@ -1008,6 +1254,19 @@ def _translate_relative_strength_reason_if_match(reason: str) -> str | None:
     if not reason.startswith("Relative strength rank "):
         return None
     return _translate_relative_strength_reason(reason)
+
+
+def _translate_multi_period_relative_strength_reason(reason: str) -> str | None:
+    if not reason.startswith("Relative strength multi-period rank "):
+        return None
+    translated = reason.replace(
+        "Relative strength multi-period rank ",
+        "多周期相对强弱组合内排名 ",
+    )
+    translated = translated.replace(" of ", "/")
+    translated = translated.replace("; sector rank ", "；行业内排名 ")
+    translated = translated.replace("; weighted return ", "；加权收益 ")
+    return translated
 
 
 def _translate_replacement_reason(reason: str) -> str | None:

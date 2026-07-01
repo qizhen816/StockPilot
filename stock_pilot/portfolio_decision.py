@@ -13,6 +13,7 @@ from stock_pilot.models import (
     PortfolioDecisionPlan,
     PortfolioDecisionSettings,
     ReplacementSuggestion,
+    RiskBreakdown,
     ScanCandidate,
     ScannerResult,
     ScoreCalculationResult,
@@ -32,6 +33,7 @@ class _DecisionContext:
     trend_rank: int
     total_positions: int
     candidates: tuple[ScanCandidate, ...]
+    portfolio_analysis: PortfolioAnalysis
 
 
 class PortfolioDecisionEngine:
@@ -83,6 +85,7 @@ class PortfolioDecisionEngine:
                     trend_rank=trend_ranks[score.code],
                     total_positions=len(ranked_scores),
                     candidates=candidates,
+                    portfolio_analysis=portfolio_analysis,
                 )
             )
             for index, score in enumerate(ranked_scores, start=1)
@@ -106,12 +109,14 @@ class PortfolioDecisionEngine:
         replacement = self._replacement_for(context)
         action = self._action(context, replacement)
         confidence = self._confidence(context, action)
+        priority = _execution_priority(action, confidence, context.score.risk)
         return PortfolioAction(
             code=context.score.code,
             name=context.score.name,
             action=action,
             confidence=confidence,
             risk=context.score.risk,
+            risk_breakdown=_risk_breakdown(context),
             score=context.score.score,
             rank=context.rank,
             relative_rank=context.relative_rank,
@@ -119,6 +124,7 @@ class PortfolioDecisionEngine:
             trend_rank=context.trend_rank,
             total_positions=context.total_positions,
             relative_strength_score=context.score.relative_strength_score,
+            execution_priority=priority,
             replacement=replacement if action == "Replace Candidate" else None,
             reasons=self._reasons(context, replacement),
         )
@@ -190,6 +196,16 @@ class PortfolioDecisionEngine:
             relative_improvement = max(
                 0, candidate.score - score.relative_strength_score
             )
+            replacement_confidence = _replacement_confidence(
+                score_gap=score_gap,
+                trend_improvement=trend_improvement,
+                relative_improvement=relative_improvement,
+                risk_improvement=risk_improvement,
+                candidate_confidence=candidate.confidence,
+                switch_cost_penalty=self._settings.replacement_switch_cost_penalty,
+            )
+            if replacement_confidence < self._settings.replacement_min_confidence:
+                continue
             return ReplacementSuggestion(
                 current_code=score.code,
                 current_name=score.name,
@@ -204,12 +220,15 @@ class PortfolioDecisionEngine:
                 relative_strength_improvement=relative_improvement,
                 risk_improvement=risk_improvement,
                 expected_portfolio_score_delta=expected_delta,
+                replacement_confidence=replacement_confidence,
                 reasons=(
+                    f"Replacement confidence is {replacement_confidence:.0%}",
                     f"Candidate score is higher by {score_gap}",
                     f"Expected portfolio score improves by {expected_delta}",
                     f"Trend improvement is {trend_improvement}",
                     f"Relative strength improvement is {relative_improvement}",
                     f"Risk improvement is {risk_improvement}",
+                    "Switch cost is included in confidence",
                     f"Candidate risk is {candidate.risk}",
                     "Candidate passed scanner filters",
                 ),
@@ -224,21 +243,7 @@ class PortfolioDecisionEngine:
         score = context.score
         reasons: list[str] = []
         if context.analysis is not None:
-            reasons.extend(
-                (
-                    f"Trend is {context.analysis.trend}",
-                    f"Trend rank {context.trend_rank} of {context.total_positions}",
-                    f"Relative strength score is {score.relative_strength_score}",
-                    (
-                        f"Relative rank {context.relative_rank} "
-                        f"of {context.total_positions}"
-                    ),
-                    f"Risk is {score.risk}",
-                    f"Risk rank {context.risk_rank} of {context.total_positions}",
-                    f"Volume status is {context.analysis.volume_status}",
-                    f"Momentum is {context.analysis.momentum}",
-                )
-            )
+            reasons.extend(_decision_explanation(context))
         else:
             reasons.extend(
                 (
@@ -260,6 +265,9 @@ class PortfolioDecisionEngine:
         if replacement is not None:
             reasons.append(
                 f"Replacement candidate {replacement.suggested_name} has higher score"
+            )
+            reasons.append(
+                f"Replacement confidence is {replacement.replacement_confidence:.0%}"
             )
         return tuple(reasons)
 
@@ -289,6 +297,102 @@ def _analysis_confidence_adjustment(analysis: AnalysisResult) -> float:
     elif analysis.volume_status == "Shrink":
         adjustment -= 0.02
     return adjustment
+
+
+def _risk_breakdown(context: _DecisionContext) -> RiskBreakdown:
+    analysis = context.analysis
+    volatility_risk = "Medium"
+    trend_risk = "Medium"
+    if analysis is not None:
+        volatility_risk = "High" if analysis.risk == "High" else analysis.risk
+        trend_risk = {"Bullish": "Low", "Neutral": "Medium", "Bearish": "High"}.get(
+            analysis.trend,
+            "Medium",
+        )
+    concentration_risk = (
+        "High"
+        if context.portfolio_analysis.concentration_top_position_pct >= 0.25
+        else "Medium"
+        if context.portfolio_analysis.concentration_top_position_pct >= 0.18
+        else "Low"
+    )
+    return RiskBreakdown(
+        volatility_risk=volatility_risk,
+        trend_risk=trend_risk,
+        concentration_risk=concentration_risk,
+        portfolio_risk=context.portfolio_analysis.portfolio_risk_level,
+    )
+
+
+def _execution_priority(action: str, confidence: float, risk: str) -> str:
+    if action == "Exit" and confidence >= 0.78:
+        return "Immediate"
+    if action in {"Reduce Position", "Replace Candidate"} and confidence >= 0.78:
+        return "Today"
+    if action in {"Reduce Position", "Replace Candidate"}:
+        return "Observe"
+    if action in {"Strong Hold", "Hold"} and risk != "High":
+        return "This Week"
+    return "Future"
+
+
+def _replacement_confidence(  # noqa: PLR0913
+    score_gap: int,
+    trend_improvement: int,
+    relative_improvement: int,
+    risk_improvement: int,
+    candidate_confidence: float,
+    switch_cost_penalty: float,
+) -> float:
+    confidence = 0.50 + min(0.16, score_gap / 100)
+    confidence += min(0.10, trend_improvement / 180)
+    confidence += min(0.10, relative_improvement / 300)
+    confidence += max(-0.08, min(0.08, risk_improvement / 40))
+    confidence += (candidate_confidence - 0.65) * 0.35
+    confidence -= switch_cost_penalty
+    return max(0.0, min(0.90, confidence))
+
+
+def _decision_explanation(context: _DecisionContext) -> tuple[str, ...]:
+    analysis = context.analysis
+    if analysis is None:
+        return ()
+    explanations: list[str] = []
+    if analysis.trend == "Bullish":
+        explanations.append("Trend remains intact")
+    elif analysis.trend == "Neutral":
+        explanations.append("Trend is consolidating")
+    else:
+        explanations.append("Trend has weakened")
+
+    if (
+        analysis.momentum == "Strong"
+        and analysis.volume_status in {"Strong", "Breakout"}
+    ):
+        explanations.append("Momentum and volume confirm the move")
+    elif analysis.momentum == "Strong":
+        explanations.append("Momentum is improving but volume confirmation is limited")
+    elif analysis.momentum == "Weak":
+        explanations.append("Momentum is weak, wait for confirmation")
+
+    if context.score.relative_strength_score >= 70:
+        explanations.append("Relative strength remains competitive")
+    elif context.score.relative_strength_score <= 40:
+        explanations.append("Relative strength is lagging the portfolio")
+
+    if analysis.risk == "High":
+        explanations.append("Risk is elevated, avoid emotional averaging down")
+    elif analysis.risk == "Low":
+        explanations.append("Risk remains controlled")
+
+    explanations.extend(
+        (
+            f"Trend rank {context.trend_rank} of {context.total_positions}",
+            f"Relative rank {context.relative_rank} of {context.total_positions}",
+            f"Risk rank {context.risk_rank} of {context.total_positions}",
+        )
+    )
+    return tuple(explanations)
 
 
 def _relative_ranks(scores: list[StockScore]) -> dict[str, int]:

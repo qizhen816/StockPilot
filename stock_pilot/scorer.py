@@ -49,7 +49,11 @@ class ScoreEngine:
             ),
         )
         total_score = sum(component.score for component in components)
-        clamped_score = max(0, min(self._settings.maximum_score, total_score))
+        penalty, penalty_reason = self._long_term_trend_penalty(analysis)
+        clamped_score = max(0, min(self._settings.maximum_score, total_score - penalty))
+        reasons = [component.reason for component in components]
+        if penalty:
+            reasons.append(penalty_reason)
 
         return StockScore(
             code=analysis.code,
@@ -57,9 +61,9 @@ class ScoreEngine:
             score=clamped_score,
             rating=_rating_for_score(clamped_score),
             risk=analysis.risk,
-            confidence=self._confidence(analysis),
+            confidence=self._confidence(analysis, relative_strength_score),
             components=components,
-            reasons=tuple(component.reason for component in components),
+            reasons=tuple(reasons),
             relative_strength_score=relative_strength_score,
         )
 
@@ -68,7 +72,7 @@ class ScoreEngine:
     ) -> tuple[ScoreCalculationResult, ...]:
         """Score all successful analysis results without stopping on failures."""
         results: list[ScoreCalculationResult] = []
-        relative_metrics = _relative_strength_metrics(analysis_results)
+        relative_metrics = self._relative_strength_metrics(analysis_results)
         for analysis_result in analysis_results:
             if analysis_result.analysis is None:
                 results.append(
@@ -172,13 +176,92 @@ class ScoreEngine:
         )
 
     def _confidence(self, analysis: AnalysisResult) -> float:
-        confidence = self._settings.minimum_confidence + (
-            len(analysis.reasons) * self._settings.reason_confidence_step
-        )
+        return self._settings.minimum_confidence
+
+    def _long_term_trend_penalty(self, analysis: AnalysisResult) -> tuple[int, str]:
+        if analysis.long_term_distance_pct is None:
+            return 0, ""
+        if analysis.long_term_distance_pct >= 0:
+            return 0, ""
+        severity = min(1.0, abs(analysis.long_term_distance_pct) / 0.12)
+        penalty = round(self._settings.long_term_trend_penalty * severity)
+        return penalty, "Long-term trend penalty: below MA60"
+
+    def _confidence(
+        self,
+        analysis: AnalysisResult,
+        relative_strength_score: int,
+    ) -> float:
+        confidence = 0.62
+        agreement = _signal_agreement(analysis, relative_strength_score)
+        confidence += agreement * self._settings.reason_confidence_step
+        if analysis.volume_status in {"Strong", "Breakout"}:
+            confidence += 0.06
+        elif analysis.volume_status in {"Shrink", "Unknown"}:
+            confidence -= 0.06
+        if analysis.risk == "High":
+            confidence -= 0.10
+        elif analysis.risk == "Low":
+            confidence += 0.04
+        if (
+            analysis.long_term_distance_pct is not None
+            and analysis.long_term_distance_pct < 0
+        ):
+            confidence -= 0.08
         return max(
             self._settings.minimum_confidence,
             min(self._settings.maximum_confidence, confidence),
         )
+
+    def _relative_strength_metrics(
+        self,
+        analysis_results: tuple[AnalysisCalculationResult, ...],
+    ) -> dict[str, _RelativeStrengthMetric]:
+        analyses = [
+            result.analysis
+            for result in analysis_results
+            if result.analysis is not None
+        ]
+        analyses = [
+            analysis for analysis in analyses if _has_multi_period_return(analysis)
+        ]
+        if not analyses:
+            return {}
+
+        weighted_returns = {
+            analysis.code: _weighted_return(
+                analysis=analysis,
+                weight_5d=self._settings.relative_strength_5d_weight,
+                weight_20d=self._settings.relative_strength_20d_weight,
+                weight_60d=self._settings.relative_strength_60d_weight,
+            )
+            for analysis in analyses
+        }
+        market_return = sum(weighted_returns.values()) / len(weighted_returns)
+        sector_returns = _sector_weighted_returns(analyses, weighted_returns)
+        portfolio_ranks = _portfolio_ranks(analyses, weighted_returns)
+        sector_ranks = _sector_ranks(analyses, weighted_returns)
+        metrics: dict[str, _RelativeStrengthMetric] = {}
+        for analysis in analyses:
+            stock_return = weighted_returns[analysis.code]
+            sector_return = sector_returns.get(analysis.sector, market_return)
+            sector_delta = stock_return - sector_return
+            market_delta = stock_return - market_return
+            rank_score = _rank_score(portfolio_ranks[analysis.code], len(analyses))
+            raw_score = (rank_score * 0.55) + 50 + (sector_delta * 220) + (
+                market_delta * 220
+            )
+            portfolio_rank = portfolio_ranks[analysis.code]
+            sector_rank, sector_total = sector_ranks[analysis.code]
+            metrics[analysis.code] = _RelativeStrengthMetric(
+                score=round(max(0, min(100, raw_score))),
+                reason=(
+                    f"Relative strength multi-period rank {portfolio_rank} "
+                    f"of {len(analyses)}; sector rank {sector_rank} "
+                    f"of {sector_total}; weighted return {stock_return:.2%}"
+                ),
+            )
+        return metrics
 
 
 def _component(name: str, weight: int, ratio: float, reason: str) -> ScoreComponent:
@@ -205,47 +288,59 @@ def _rating_for_score(score: int) -> str:
     return "★☆☆☆☆"
 
 
-def _relative_strength_metrics(
-    analysis_results: tuple[AnalysisCalculationResult, ...],
-) -> dict[str, _RelativeStrengthMetric]:
-    analyses = [
-        result.analysis
-        for result in analysis_results
-        if result.analysis is not None and result.analysis.stock_return is not None
-    ]
-    if not analyses:
-        return {}
-
-    market_return = sum(item.stock_return or 0 for item in analyses) / len(analyses)
-    sector_returns = _sector_returns(analyses)
-    portfolio_ranks = _portfolio_ranks(analyses)
-    sector_ranks = _sector_ranks(analyses)
-    metrics: dict[str, _RelativeStrengthMetric] = {}
-    for analysis in analyses:
-        stock_return = analysis.stock_return or 0
-        sector_return = sector_returns.get(analysis.sector, market_return)
-        sector_delta = stock_return - sector_return
-        market_delta = stock_return - market_return
-        rank_score = _rank_score(portfolio_ranks[analysis.code], len(analyses))
-        raw_score = (rank_score * 0.6) + 50 + (sector_delta * 300) + (
-            market_delta * 300
-        )
-        portfolio_rank = portfolio_ranks[analysis.code]
-        sector_rank, sector_total = sector_ranks[analysis.code]
-        metrics[analysis.code] = _RelativeStrengthMetric(
-            score=round(max(0, min(100, raw_score))),
-            reason=(
-                f"Relative strength rank {portfolio_rank} of {len(analyses)}; "
-                f"sector rank {sector_rank} of {sector_total}"
-            ),
-        )
-    return metrics
+def _signal_agreement(analysis: AnalysisResult, relative_strength_score: int) -> int:
+    bullish = 0
+    bearish = 0
+    if analysis.trend == "Bullish":
+        bullish += 1
+    elif analysis.trend == "Bearish":
+        bearish += 1
+    if analysis.momentum == "Strong":
+        bullish += 1
+    elif analysis.momentum == "Weak":
+        bearish += 1
+    if analysis.volume_status in {"Strong", "Breakout"}:
+        bullish += 1
+    elif analysis.volume_status == "Shrink":
+        bearish += 1
+    if relative_strength_score >= 70:
+        bullish += 1
+    elif relative_strength_score <= 40:
+        bearish += 1
+    if analysis.risk == "High":
+        bearish += 1
+    return bullish - bearish
 
 
-def _sector_returns(analyses: list[AnalysisResult]) -> dict[str, float]:
+def _has_multi_period_return(analysis: AnalysisResult) -> bool:
+    return any(
+        value is not None
+        for value in (analysis.return_5d, analysis.return_20d, analysis.return_60d)
+    )
+
+
+def _weighted_return(
+    analysis: AnalysisResult,
+    weight_5d: float,
+    weight_20d: float,
+    weight_60d: float,
+) -> float:
+    return (
+        (analysis.return_5d or 0.0) * weight_5d
+        + (analysis.return_20d or 0.0) * weight_20d
+        + (analysis.return_60d or 0.0) * weight_60d
+    )
+
+
+def _sector_weighted_returns(
+    analyses: list[AnalysisResult],
+    weighted_returns: dict[str, float],
+) -> dict[str, float]:
     grouped: dict[str, list[float]] = {}
     for analysis in analyses:
-        grouped.setdefault(analysis.sector, []).append(analysis.stock_return or 0)
+        grouped.setdefault(analysis.sector, []).append(
+            weighted_returns[analysis.code]
+        )
     return {
         sector: sum(values) / len(values)
         for sector, values in grouped.items()
@@ -253,16 +348,22 @@ def _sector_returns(analyses: list[AnalysisResult]) -> dict[str, float]:
     }
 
 
-def _portfolio_ranks(analyses: list[AnalysisResult]) -> dict[str, int]:
+def _portfolio_ranks(
+    analyses: list[AnalysisResult],
+    weighted_returns: dict[str, float],
+) -> dict[str, int]:
     ranked = sorted(
         analyses,
-        key=lambda analysis: analysis.stock_return or 0,
+        key=lambda analysis: weighted_returns[analysis.code],
         reverse=True,
     )
     return {analysis.code: index for index, analysis in enumerate(ranked, start=1)}
 
 
-def _sector_ranks(analyses: list[AnalysisResult]) -> dict[str, tuple[int, int]]:
+def _sector_ranks(
+    analyses: list[AnalysisResult],
+    weighted_returns: dict[str, float],
+) -> dict[str, tuple[int, int]]:
     grouped: dict[str, list[AnalysisResult]] = {}
     for analysis in analyses:
         grouped.setdefault(analysis.sector, []).append(analysis)
@@ -271,7 +372,7 @@ def _sector_ranks(analyses: list[AnalysisResult]) -> dict[str, tuple[int, int]]:
     for sector_analyses in grouped.values():
         ranked = sorted(
             sector_analyses,
-            key=lambda analysis: analysis.stock_return or 0,
+            key=lambda analysis: weighted_returns[analysis.code],
             reverse=True,
         )
         total = len(ranked)

@@ -24,6 +24,10 @@ def _settings() -> ScorerSettings:
         minimum_confidence=0.55,
         maximum_confidence=0.90,
         maximum_score=95,
+        relative_strength_5d_weight=0.30,
+        relative_strength_20d_weight=0.40,
+        relative_strength_60d_weight=0.30,
+        long_term_trend_penalty=10,
     )
 
 
@@ -50,7 +54,7 @@ def test_score_engine_scores_bullish_low_risk_analysis() -> None:
     assert score.score == 95
     assert score.rating == "★★★★★"
     assert score.risk == "Low"
-    assert score.confidence == pytest.approx(0.71)
+    assert score.confidence == pytest.approx(0.68)
     assert len(score.components) == 5
     assert "Trend is Bullish" in score.reasons
     assert "Volume breakout confirmed" in score.reasons
@@ -119,7 +123,7 @@ def test_score_all_uses_portfolio_relative_strength_ranking() -> None:
         scored[1].score.relative_strength_score
     )
     assert any(
-        reason.startswith("Relative strength rank 1 of 2")
+        "Relative strength multi-period rank 1 of 2" in reason
         for reason in scored[0].score.reasons
     )
 
@@ -136,4 +140,8 @@ def _analysis(code: str, name: str, stock_return: float) -> AnalysisResult:
         reasons=("Close above MA20", "Volume breakout"),
         sector="科技",
         stock_return=stock_return,
+        return_5d=stock_return,
+        return_20d=stock_return * 2,
+        return_60d=stock_return * 3,
+        long_term_distance_pct=0.05,
     )

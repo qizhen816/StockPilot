@@ -16,6 +16,7 @@ from stock_pilot.portfolio import (
     PortfolioValuationCalculator,
 )
 from stock_pilot.portfolio_decision import PortfolioDecisionEngine
+from stock_pilot.position_manager import PositionManagementInput, PositionManager
 from stock_pilot.reporter import DailyReportPayload
 from stock_pilot.scanner import MarketScanner
 from stock_pilot.scorer import ScoreEngine
@@ -67,6 +68,16 @@ def run_daily_pipeline(
         portfolio_analysis=portfolio_analysis,
         scanner_result=scanner_result,
     )
+    position_recommendations = PositionManager(settings.position_manager).recommend_all(
+        PositionManagementInput(
+        portfolio=portfolio,
+        analysis_results=analysis_results,
+        score_results=score_results,
+        portfolio_valuation=portfolio_valuation,
+        portfolio_analysis=portfolio_analysis,
+        indicator_results=indicator_results,
+        )
+    )
     summary = DailySummaryGenerator(settings.summary).generate(
         score_results=score_results,
         analysis_results=analysis_results,
@@ -81,6 +92,7 @@ def run_daily_pipeline(
         portfolio_valuation=portfolio_valuation,
         portfolio_analysis=portfolio_analysis,
         portfolio_decision_plan=portfolio_decision_plan,
+        position_recommendations=position_recommendations,
         indicator_results=indicator_results,
         analysis_results=analysis_results,
         score_results=score_results,
